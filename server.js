@@ -258,6 +258,10 @@ app.post('/api/laboratorio/login-email', async (req, res) => {
     res.status(500).json({ erro: 'Erro interno do servidor' });
   }
 });
+// Servir la page d'accueil
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // ============================================
 // ROTAS PROTEGIDAS
