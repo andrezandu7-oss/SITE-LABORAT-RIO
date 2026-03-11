@@ -133,7 +133,7 @@ const Laborantin = mongoose.model('Laborantin', laborantinSchema);
 // ============================================
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/certificados', express.static(path.join(__dirname, 'certificados'))); // servir PDFs
+app.use('/certificados', express.static(path.join(__dirname, 'certificados')));
 
 // Middleware de autenticação JWT
 function authMiddleware(req, res, next) {
@@ -165,7 +165,7 @@ app.post('/api/laboratorio/login', async (req, res) => {
       return res.status(403).json({ erro: 'Esta chave não é válida para laboratórios' });
     }
 
-    // Buscar estabelecimento pelo prefixo
+    // Buscar estabelecimento pelo prefixo (apenas laboratórios)
     const establishments = await Establishment.find({ establishmentType: 'laboratorio' }).select('+keyHash');
     let establishment = null;
     for (const est of establishments) {
@@ -201,7 +201,6 @@ app.post('/api/laboratorio/login', async (req, res) => {
       });
       await responsable.save();
 
-      // Gerar token
       const token = jwt.sign(
         { id: responsable._id, role: 'responsable', establishmentId: establishment._id },
         JWT_SECRET,
@@ -217,8 +216,7 @@ app.post('/api/laboratorio/login', async (req, res) => {
       });
     }
 
-    // Responsável já existe, gerar token normal (será usado com email/senha posteriormente)
-    // Mas por enquanto, vamos retornar token também (para simplificar)
+    // Responsável já existe, gerar token normal
     const token = jwt.sign(
       { id: responsable._id, role: responsable.role, establishmentId: establishment._id },
       JWT_SECRET,
@@ -246,7 +244,6 @@ app.post('/api/laboratorio/login-email', async (req, res) => {
     const valid = await laborantin.verifyPassword(password);
     if (!valid) return res.status(401).json({ erro: 'Credenciais inválidas' });
 
-    // Atualizar último login
     laborantin.lastLogin = new Date();
     await laborantin.save();
 
@@ -464,7 +461,6 @@ app.get('/api/laboratorio/certificates/:id/pdf', authMiddleware, async (req, res
     const certificate = await Certificate.findById(req.params.id);
     if (!certificate) return res.status(404).json({ erro: 'Certificado não encontrado' });
 
-    // Verificar se pertence ao mesmo estabelecimento
     if (certificate.establishmentId.toString() !== req.user.establishmentId) {
       return res.status(403).json({ erro: 'Acesso negado' });
     }
