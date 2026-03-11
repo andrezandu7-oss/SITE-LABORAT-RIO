@@ -1,4 +1,3 @@
-<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="pt">
 <head>
@@ -260,7 +259,6 @@
         let userRole = localStorage.getItem('userRole');
         let establishmentId = localStorage.getItem('establishmentId');
 
-        // Se já estiver logado, mostrar dashboard
         if (token) {
             showDashboard();
         }
@@ -293,7 +291,6 @@
                     localStorage.setItem('establishmentId', establishmentId);
                     
                     if (data.tempPassword) {
-                        // Mostrar senha temporária
                         document.getElementById('tempPasswordMessage').innerHTML = `
                             <strong>Senha temporária:</strong> ${data.tempPassword}<br>
                             <small>Guarde esta senha. Poderá alterá-la depois.</small>
@@ -319,7 +316,6 @@
             loadEstablishmentInfo();
             loadRecentCertificates();
             
-            // Pré-encher data do teste com hoje
             const hoje = new Date().toISOString().split('T')[0];
             document.getElementById('testDate').value = hoje;
         }
