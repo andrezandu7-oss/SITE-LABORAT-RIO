@@ -1,11 +1,8 @@
 {
   "name": "laboratorio-site",
   "version": "1.0.0",
-  "description": "Sistema de gestão de certificados para laboratórios",
+  "description": "Sistema de certificados para laboratórios - SNS Angola",
   "main": "server.js",
-  "engines": {
-    "node": "18.x"
-  },
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
