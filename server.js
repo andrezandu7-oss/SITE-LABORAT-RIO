@@ -132,12 +132,18 @@ const Laborantin = mongoose.model('Laborantin', laborantinSchema);
 // MIDDLEWARES
 // ============================================
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'))); // serve arquivos estáticos da pasta public
 app.use('/certificados', express.static(path.join(__dirname, 'certificados')));
 
-// Rota explícita para a raiz (serve o index.html)
+// Rota explícita para a raiz (garantia)
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  console.log('📁 Tentando servir:', indexPath);
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send('Arquivo index.html não encontrado em public/');
+  }
 });
 
 // Middleware de autenticação JWT
