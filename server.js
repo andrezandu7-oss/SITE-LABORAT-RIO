@@ -135,6 +135,11 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/certificados', express.static(path.join(__dirname, 'certificados')));
 
+// Rota explícita para a raiz (serve o index.html)
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // Middleware de autenticação JWT
 function authMiddleware(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
@@ -159,13 +164,11 @@ app.post('/api/laboratorio/login', async (req, res) => {
     const { apiKey } = req.body;
     if (!apiKey) return res.status(400).json({ erro: 'Chave API não fornecida' });
 
-    // Extrair prefixo
     const prefix = apiKey.split('-')[0];
     if (prefix !== 'LAB') {
       return res.status(403).json({ erro: 'Esta chave não é válida para laboratórios' });
     }
 
-    // Buscar estabelecimento pelo prefixo (apenas laboratórios)
     const establishments = await Establishment.find({ establishmentType: 'laboratorio' }).select('+keyHash');
     let establishment = null;
     for (const est of establishments) {
@@ -179,16 +182,13 @@ app.post('/api/laboratorio/login', async (req, res) => {
       return res.status(401).json({ erro: 'Chave API inválida' });
     }
 
-    // Verificar se o estabelecimento está ativo
     if (establishment.status === 'Inativo') {
       return res.status(403).json({ erro: 'Estabelecimento inativo. Contacte o ministério.' });
     }
 
-    // Verificar se já existe um responsável
     let responsable = await Laborantin.findOne({ establishmentId: establishment._id, role: 'responsable' });
 
     if (!responsable) {
-      // Primeiro acesso: criar conta de responsável com senha temporária
       const tempPassword = crypto.randomBytes(4).toString('hex');
       const passwordHash = await bcrypt.hash(tempPassword, saltRounds);
       responsable = new Laborantin({
@@ -216,7 +216,6 @@ app.post('/api/laboratorio/login', async (req, res) => {
       });
     }
 
-    // Responsável já existe, gerar token normal
     const token = jwt.sign(
       { id: responsable._id, role: responsable.role, establishmentId: establishment._id },
       JWT_SECRET,
@@ -258,10 +257,6 @@ app.post('/api/laboratorio/login-email', async (req, res) => {
     res.status(500).json({ erro: 'Erro interno do servidor' });
   }
 });
-// Servir la page d'accueil
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
 
 // ============================================
 // ROTAS PROTEGIDAS
@@ -299,7 +294,6 @@ async function generateCertificatePDF(certificate, establishment, laborantin) {
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-      // Cabeçalho do Ministério
       doc.rect(50, 30, 500, 5).fill('#005a9c');
       doc.fontSize(24)
          .font('Helvetica-Bold')
@@ -316,14 +310,12 @@ async function generateCertificatePDF(certificate, establishment, laborantin) {
          .stroke()
          .moveDown(2);
 
-      // Título
       doc.fontSize(20)
          .font('Helvetica-Bold')
          .fillColor('#1f2937')
          .text('CERTIFICADO DE ANÁLISE LABORATORIAL', { align: 'center' })
          .moveDown(2);
 
-      // Informações do estabelecimento
       doc.fontSize(12).font('Helvetica-Bold').text('LABORATÓRIO:');
       doc.font('Helvetica').text(establishment.name);
       doc.moveDown(0.5);
@@ -337,7 +329,6 @@ async function generateCertificatePDF(certificate, establishment, laborantin) {
       doc.font('Helvetica').text(establishment.director);
       doc.moveDown(1);
 
-      // Informações do certificado
       doc.font('Helvetica-Bold').text('Nº CERTIFICADO:');
       doc.font('Helvetica').text(certificate.certificateNumber);
       doc.moveDown(0.5);
@@ -348,7 +339,6 @@ async function generateCertificatePDF(certificate, establishment, laborantin) {
       doc.font('Helvetica').text(laborantin.name);
       doc.moveDown(1);
 
-      // Dados do paciente
       doc.font('Helvetica-Bold').text('PACIENTE:');
       doc.font('Helvetica').text(certificate.patientName);
       doc.moveDown(0.5);
@@ -376,7 +366,6 @@ async function generateCertificatePDF(certificate, establishment, laborantin) {
         doc.font('Helvetica').text(JSON.stringify(certificate.testResults, null, 2));
       }
 
-      // QR Code
       const qrData = JSON.stringify({
         certId: certificate._id,
         number: certificate.certificateNumber,
@@ -386,7 +375,6 @@ async function generateCertificatePDF(certificate, establishment, laborantin) {
       const qrBuffer = await QRCode.toBuffer(qrData);
       doc.image(qrBuffer, 450, 650, { width: 100, height: 100 });
 
-      // Rodapé
       doc.rect(50, 750, 500, 1).fill('#9ca3af');
       doc.fontSize(8)
          .fillColor('#6b7280')
@@ -412,15 +400,12 @@ app.post('/api/laboratorio/certificates', authMiddleware, async (req, res) => {
       return res.status(400).json({ erro: 'Campos obrigatórios não preenchidos' });
     }
 
-    // Obter estabelecimento
     const establishment = await Establishment.findById(req.user.establishmentId);
     if (!establishment) return res.status(404).json({ erro: 'Estabelecimento não encontrado' });
 
-    // Obter laborantin
     const laborantin = await Laborantin.findById(req.user.id);
     if (!laborantin) return res.status(404).json({ erro: 'Utilizador não encontrado' });
 
-    // Criar certificado
     const certificateData = {
       establishmentId: establishment._id,
       createdBy: laborantin._id,
@@ -436,19 +421,15 @@ app.post('/api/laboratorio/certificates', authMiddleware, async (req, res) => {
     const certificate = new Certificate(certificateData);
     await certificate.save();
 
-    // Gerar PDF
     const pdfBuffer = await generateCertificatePDF(certificate, establishment, laborantin);
 
-    // Salvar PDF no disco
     const filename = `certificado_${certificate.certificateNumber}.pdf`;
     const filepath = path.join(certDir, filename);
     fs.writeFileSync(filepath, pdfBuffer);
 
-    // Atualizar caminho no certificado
     certificate.pdfPath = filename;
     await certificate.save();
 
-    // Configurar resposta para download
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', pdfBuffer.length);
@@ -484,7 +465,6 @@ app.get('/api/laboratorio/certificates/:id/pdf', authMiddleware, async (req, res
   }
 });
 
-// (Opcional) CRUD para laborantins
 // Listar laborantins do estabelecimento
 app.get('/api/laboratorio/laborantins', authMiddleware, async (req, res) => {
   try {
