@@ -1,4 +1,4 @@
-// server.js
+// server.js (corrigé avec modèle Establishment partagé)
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -9,7 +9,6 @@ const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -28,67 +27,120 @@ mongoose.connect(MONGODB_URI)
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public'))); // arquivos estáticos
 
 // ============================================
-// Modelos
+// Modelo Establishment (mesmo do ministério)
 // ============================================
-const laboratorioSchema = new mongoose.Schema({
-  nome: { type: String, required: true },
-  nif: { type: String, required: true, unique: true },
-  tipo: { type: String, enum: ['laboratorio', 'hospital', 'clinica'] },
-  provincia: String,
-  endereco: String,
-  email: String,
-  telefone: String,
-  diretor: String,
-  apiKey: { type: String, unique: true },
-  ativo: { type: Boolean, default: true },
-  totalEmissoes: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now }
+const PROVINCIAS = [
+  'Bengo', 'Benguela', 'Bié', 'Cabinda', 'Cuando Cubango',
+  'Cuanza Norte', 'Cuanza Sul', 'Cunene', 'Huambo', 'Huíla',
+  'Luanda', 'Lunda Norte', 'Lunda Sul', 'Malanje', 'Moxico',
+  'Namibe', 'Uíge', 'Zaire'
+];
+
+const establishmentSchema = new mongoose.Schema({
+  establishmentType: {
+    type: String,
+    enum: ['laboratorio', 'hospital', 'empresa', 'ong'],
+    required: true
+  },
+  name: { type: String, required: true, trim: true },
+  nif: { type: String, required: true, unique: true, trim: true },
+  institutionType: {
+    type: String,
+    enum: ['Público', 'Privado'],
+    required: true
+  },
+  province: { type: String, required: true, enum: PROVINCIAS },
+  municipality: { type: String, required: true, trim: true },
+  address: { type: String, required: true, trim: true },
+  phone1: { type: String, required: true, trim: true },
+  phone2: { type: String, trim: true },
+  email: {
+    type: String,
+    lowercase: true,
+    trim: true,
+    match: [/^\S+@\S+\.\S+$/, 'Email inválido']
+  },
+  director: { type: String, required: true, trim: true },
+  technicalResponsible: { type: String, required: true, trim: true },
+  licenseNumber: { type: String, required: true, trim: true },
+  licenseValidity: { type: Date, required: true },
+  keyHash: { type: String, required: true, unique: true },
+  keyPrefix: { type: String, default: 'SNS-' },
+  isActive: { type: Boolean, default: true }
+}, { timestamps: true });
+
+establishmentSchema.virtual('status').get(function() {
+  if (!this.isActive) return 'Inativo';
+  return this.licenseValidity < new Date() ? 'Inativo' : 'Ativo';
 });
-const Laboratorio = mongoose.model('Laboratorio', laboratorioSchema);
 
+const Establishment = mongoose.model('Establishment', establishmentSchema);
+
+// ============================================
+// Modelo Certificate (mesmo do ministério)
+// ============================================
 const certificateSchema = new mongoose.Schema({
-  numero: { type: String, unique: true },
-  tipo: { type: Number, required: true, enum: [1,2,3,4,5,6,7,8] },
-  paciente: {
-    nomeCompleto: { type: String, required: true },
-    genero: { type: String, enum: ['M', 'F'] },
-    dataNascimento: Date,
-    bi: String
-  },
-  laborantin: {
-    nome: String,
-    registro: String
-  },
-  dados: mongoose.Schema.Types.Mixed,
-  hash: { type: String, unique: true },
-  emitidoPor: { type: mongoose.Schema.Types.ObjectId, ref: 'Laboratorio' },
-  emitidoEm: { type: Date, default: Date.now }
+  establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true },
+  createdBy: { type: String }, // pode ser o nome do laborantin por enquanto
+  certificateNumber: { type: String, required: true, unique: true },
+  patientName: { type: String, required: true },
+  patientId: { type: String },
+  patientBirthDate: { type: Date },
+  diseaseCategory: { type: String, required: true },
+  diagnosis: { type: String, required: true },
+  testDate: { type: Date, default: Date.now },
+  testResults: { type: mongoose.Schema.Types.Mixed },
+  pdfPath: { type: String }
+}, { timestamps: true });
+
+certificateSchema.pre('save', async function(next) {
+  if (!this.certificateNumber) {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const count = await mongoose.model('Certificate').countDocuments();
+    this.certificateNumber = `CERT-${year}${month}-${(count + 1).toString().padStart(6, '0')}`;
+  }
+  next();
 });
+
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
 // ============================================
 // Funções auxiliares
 // ============================================
-function gerarApiKey() {
-  return 'LAB-' + Date.now() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase();
-}
-function gerarNumeroCertificado(tipo) {
+function gerarNumeroCertificado() {
   const ano = new Date().getFullYear();
   const mes = (new Date().getMonth() + 1).toString().padStart(2, '0');
   const random = crypto.randomBytes(4).toString('hex').toUpperCase();
-  return 'CERT-' + tipo + '-' + ano + mes + '-' + random;
+  return `CERT-${ano}${mes}-${random}`;
 }
 
-// Middleware de autenticação por API Key
+// Middleware de autenticação por API Key (via Establishment)
 const authLaboratorio = async (req, res, next) => {
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) return res.status(401).json({ erro: 'API Key não fornecida' });
 
-  const lab = await Laboratorio.findOne({ apiKey, ativo: true });
-  if (!lab) return res.status(401).json({ erro: 'API Key inválida' });
+  // Extrair prefixo (deve ser LAB)
+  const prefix = apiKey.split('-')[0];
+  if (prefix !== 'LAB') {
+    return res.status(403).json({ erro: 'Chave inválida para laboratório' });
+  }
+
+  // Buscar estabelecimentos do tipo laboratorio
+  const labs = await Establishment.find({ establishmentType: 'laboratorio' }).select('+keyHash');
+  let lab = null;
+  for (const est of labs) {
+    if (await bcrypt.compare(apiKey, est.keyHash)) {
+      lab = est;
+      break;
+    }
+  }
+
+  if (!lab) return res.status(401).json({ erro: 'Chave API inválida' });
+  if (lab.status === 'Inativo') return res.status(403).json({ erro: 'Laboratório inativo' });
 
   req.lab = lab;
   next();
@@ -158,14 +210,15 @@ app.get('/dashboard', (req, res) => {
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f7f6;padding:20px;}
-    .header{background:#006633;color:white;padding:15px 20px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;}
-    .container{max-width:1200px;margin:20px auto;}
+    .header{background:#006633;color:white;padding:15px 20px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+    .container{max-width:1200px;margin:0 auto;}
     .card{background:white;border-radius:8px;padding:20px;margin-bottom:20px;box-shadow:0 2px 5px rgba(0,0,0,0.1);}
     table{width:100%;border-collapse:collapse;}
     th{background:#f0f0f0;padding:10px;text-align:left;}
     td{padding:10px;border-bottom:1px solid #eee;}
     button{padding:8px 15px;background:#006633;color:white;border:none;border-radius:5px;cursor:pointer;}
     .logout{background:#c00;}
+    .btn-add{background:#006633;margin-top:10px;}
   </style>
 </head>
 <body>
@@ -178,7 +231,7 @@ app.get('/dashboard', (req, res) => {
       <h3>Certificados Recentes</h3>
       <div id="certificados"></div>
     </div>
-    <button onclick="window.location.href='/novo-certificado'">➕ Novo Certificado</button>
+    <button class="btn-add" onclick="window.location.href='/novo-certificado'">➕ Novo Certificado</button>
   </div>
   <script>
     const token = localStorage.getItem('token');
@@ -192,34 +245,36 @@ app.get('/dashboard', (req, res) => {
         });
         const certs = await r.json();
         let html = '<table><tr><th>Número</th><th>Paciente</th><th>Data</th><th>Ações</th></tr>';
-        certs.forEach(c => {
-          html += '<tr>' +
-            '<td>' + c.numero + '</td>' +
-            '<td>' + c.paciente.nomeCompleto + '</td>' +
-            '<td>' + new Date(c.emitidoEm).toLocaleDateString('pt-PT') + '</td>' +
-            '<td><button onclick="baixarPDF(\'' + c.numero + '\')">📄 PDF</button></td>' +
-            '</tr>';
-        });
-        html += '</table>';
+        if (certs.length === 0) {
+          html = '<p>Nenhum certificado emitido.</p>';
+        } else {
+          certs.forEach(c => {
+            html += '<tr>' +
+              '<td>' + c.certificateNumber + '</td>' +
+              '<td>' + c.patientName + '</td>' +
+              '<td>' + new Date(c.createdAt).toLocaleDateString('pt-PT') + '</td>' +
+              '<td><button onclick="baixarPDF(\'' + c._id + '\')">📄 PDF</button></td>' +
+              '</tr>';
+          });
+          html += '</table>';
+        }
         document.getElementById('certificados').innerHTML = html;
       } catch (e) {
         document.getElementById('certificados').innerHTML = '<p>Erro ao carregar</p>';
       }
     }
 
-    async function baixarPDF(numero) {
+    async function baixarPDF(id) {
       try {
-        const r = await fetch('/api/laboratorio/certificados/pdf', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': token },
-          body: JSON.stringify({ numero })
+        const r = await fetch('/api/laboratorio/certificados/' + id + '/pdf', {
+          headers: { 'x-api-key': token }
         });
         if (!r.ok) throw new Error();
         const blob = await r.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = numero + '.pdf';
+        a.download = 'certificado.pdf';
         a.click();
       } catch (e) {
         alert('Erro ao gerar PDF');
@@ -247,8 +302,8 @@ app.get('/novo-certificado', (req, res) => {
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f7f6;padding:20px;}
-    .header{background:#006633;color:white;padding:15px 20px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;}
-    .container{max-width:800px;margin:20px auto;}
+    .header{background:#006633;color:white;padding:15px 20px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+    .container{max-width:800px;margin:0 auto;}
     .card{background:white;border-radius:8px;padding:20px;margin-bottom:20px;box-shadow:0 2px 5px rgba(0,0,0,0.1);}
     .campo{margin-bottom:15px;}
     label{display:block;font-weight:bold;margin-bottom:5px;}
@@ -268,39 +323,37 @@ app.get('/novo-certificado', (req, res) => {
         <h3>Dados do Paciente</h3>
         <div class="campo">
           <label>Nome Completo *</label>
-          <input type="text" id="nomePaciente" required>
+          <input type="text" id="patientName" required>
         </div>
         <div class="campo">
-          <label>Gênero</label>
-          <select id="genero">
+          <label>Documento (BI)</label>
+          <input type="text" id="patientId">
+        </div>
+        <div class="campo">
+          <label>Data de Nascimento</label>
+          <input type="date" id="patientBirthDate">
+        </div>
+        <div class="campo">
+          <label>Categoria da Doença *</label>
+          <select id="diseaseCategory" required>
             <option value="">Selecione</option>
-            <option value="M">Masculino</option>
-            <option value="F">Feminino</option>
+            <option value="Malaria">Malária</option>
+            <option value="Tuberculose">Tuberculose</option>
+            <option value="COVID-19">COVID-19</option>
+            <option value="HIV/SIDA">HIV/SIDA</option>
+            <option value="Hepatite">Hepatite</option>
+            <option value="Febre Tifoide">Febre Tifoide</option>
+            <option value="Outra">Outra</option>
           </select>
         </div>
         <div class="campo">
-          <label>Data Nascimento</label>
-          <input type="date" id="dataNascimento">
+          <label>Diagnóstico *</label>
+          <textarea id="diagnosis" rows="3" required></textarea>
         </div>
         <div class="campo">
-          <label>BI</label>
-          <input type="text" id="bi">
+          <label>Resultados Detalhados (opcional)</label>
+          <textarea id="testResults" rows="2"></textarea>
         </div>
-        <h3>Tipo de Certificado</h3>
-        <div class="campo">
-          <select id="tipo">
-            <option value="1">Genótipo</option>
-            <option value="2">Boa Saúde</option>
-            <option value="3">Incapacidade</option>
-            <option value="4">Aptidão</option>
-            <option value="5">Saúde Materna</option>
-            <option value="6">Pré-Natal</option>
-            <option value="7">Epidemiológico</option>
-            <option value="8">CSD</option>
-          </select>
-        </div>
-        <h3>Resultados (opcional)</h3>
-        <div id="camposResultados"></div>
         <div class="campo">
           <button type="submit">Emitir Certificado</button>
         </div>
@@ -312,34 +365,15 @@ app.get('/novo-certificado', (req, res) => {
     const token = localStorage.getItem('token');
     if (!token) window.location.href = '/';
 
-    // Campos padrão para qualquer tipo (simplificado)
-    const camposHtml = \`
-      <div class="campo">
-        <label>Resultado 1</label>
-        <input type="text" name="campo1" placeholder="Digite um valor">
-      </div>
-      <div class="campo">
-        <label>Resultado 2</label>
-        <input type="text" name="campo2" placeholder="Digite um valor">
-      </div>
-    \`;
-    document.getElementById('camposResultados').innerHTML = camposHtml;
-
     document.getElementById('formCert').addEventListener('submit', async (e) => {
       e.preventDefault();
       const dados = {
-        tipo: parseInt(document.getElementById('tipo').value),
-        paciente: {
-          nomeCompleto: document.getElementById('nomePaciente').value,
-          genero: document.getElementById('genero').value,
-          dataNascimento: document.getElementById('dataNascimento').value,
-          bi: document.getElementById('bi').value
-        },
-        laborantin: { nome: 'Laborantin' },
-        dados: {
-          campo1: document.querySelector('[name="campo1"]').value,
-          campo2: document.querySelector('[name="campo2"]').value
-        }
+        patientName: document.getElementById('patientName').value,
+        patientId: document.getElementById('patientId').value,
+        patientBirthDate: document.getElementById('patientBirthDate').value,
+        diseaseCategory: document.getElementById('diseaseCategory').value,
+        diagnosis: document.getElementById('diagnosis').value,
+        testResults: document.getElementById('testResults').value
       };
       try {
         const r = await fetch('/api/laboratorio/certificados', {
@@ -372,31 +406,42 @@ app.post('/api/laboratorio/login', async (req, res) => {
     const { apiKey } = req.body;
     if (!apiKey) return res.status(400).json({ erro: 'Chave API não fornecida' });
 
-    const lab = await Laboratorio.findOne({ apiKey, ativo: true });
+    const prefix = apiKey.split('-')[0];
+    if (prefix !== 'LAB') {
+      return res.status(403).json({ erro: 'Chave inválida para laboratório' });
+    }
+
+    const labs = await Establishment.find({ establishmentType: 'laboratorio' }).select('+keyHash');
+    let lab = null;
+    for (const est of labs) {
+      if (await bcrypt.compare(apiKey, est.keyHash)) {
+        lab = est;
+        break;
+      }
+    }
+
     if (!lab) return res.status(401).json({ erro: 'Chave API inválida' });
+    if (lab.status === 'Inativo') return res.status(403).json({ erro: 'Laboratório inativo' });
 
     const token = jwt.sign(
-      { id: lab._id, nome: lab.nome },
+      { id: lab._id, nome: lab.name },
       process.env.JWT_SECRET || 'secret-key',
       { expiresIn: '7d' }
     );
 
-    res.json({ token, lab: { nome: lab.nome, totalEmissoes: lab.totalEmissoes } });
+    res.json({ token, lab: { nome: lab.name } });
   } catch (error) {
-    res.status(500).json({ erro: 'Erro interno' });
+    console.error(error);
+    res.status(500).json({ erro: 'Erro interno do servidor' });
   }
 });
 
 // ============================================
-// Rotas Protegidas (com authLaboratorio)
+// Rotas Protegidas
 // ============================================
-app.get('/api/laboratorio/me', authLaboratorio, (req, res) => {
-  res.json(req.lab);
-});
-
 app.get('/api/laboratorio/certificados', authLaboratorio, async (req, res) => {
   try {
-    const certs = await Certificate.find({ emitidoPor: req.lab._id }).sort({ emitidoEm: -1 });
+    const certs = await Certificate.find({ establishmentId: req.lab._id }).sort({ createdAt: -1 });
     res.json(certs);
   } catch (error) {
     res.status(500).json({ erro: 'Erro ao listar certificados' });
@@ -405,27 +450,24 @@ app.get('/api/laboratorio/certificados', authLaboratorio, async (req, res) => {
 
 app.post('/api/laboratorio/certificados', authLaboratorio, async (req, res) => {
   try {
-    const { tipo, paciente, laborantin, dados } = req.body;
-    if (!tipo || !paciente || !paciente.nomeCompleto) {
-      return res.status(400).json({ erro: 'Dados incompletos' });
+    const { patientName, patientId, patientBirthDate, diseaseCategory, diagnosis, testResults } = req.body;
+    if (!patientName || !diseaseCategory || !diagnosis) {
+      return res.status(400).json({ erro: 'Campos obrigatórios' });
     }
 
-    const numero = gerarNumeroCertificado(tipo);
-    const hash = crypto.createHash('sha256').update(numero + Date.now()).digest('hex');
-
-    const certificado = new Certificate({
-      numero,
-      tipo,
-      paciente,
-      laborantin,
-      dados,
-      hash,
-      emitidoPor: req.lab._id
+    const numero = gerarNumeroCertificado();
+    const certificate = new Certificate({
+      establishmentId: req.lab._id,
+      createdBy: 'Laborantin',
+      certificateNumber: numero,
+      patientName,
+      patientId,
+      patientBirthDate: patientBirthDate ? new Date(patientBirthDate) : undefined,
+      diseaseCategory,
+      diagnosis,
+      testResults
     });
-    await certificado.save();
-
-    req.lab.totalEmissoes++;
-    await req.lab.save();
+    await certificate.save();
 
     res.json({ success: true, numero });
   } catch (error) {
@@ -433,18 +475,18 @@ app.post('/api/laboratorio/certificados', authLaboratorio, async (req, res) => {
   }
 });
 
-app.post('/api/laboratorio/certificados/pdf', authLaboratorio, async (req, res) => {
+app.get('/api/laboratorio/certificados/:id/pdf', authLaboratorio, async (req, res) => {
   try {
-    const { numero } = req.body;
-    if (!numero) return res.status(400).json({ erro: 'Número não fornecido' });
-
-    const certificado = await Certificate.findOne({ numero, emitidoPor: req.lab._id });
-    if (!certificado) return res.status(404).json({ erro: 'Certificado não encontrado' });
+    const certificate = await Certificate.findById(req.params.id);
+    if (!certificate) return res.status(404).json({ erro: 'Certificado não encontrado' });
+    if (certificate.establishmentId.toString() !== req.lab._id.toString()) {
+      return res.status(403).json({ erro: 'Acesso negado' });
+    }
 
     const lab = req.lab;
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=${numero}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename=${certificate.certificateNumber}.pdf`);
     doc.pipe(res);
 
     // Cabeçalho
@@ -459,38 +501,48 @@ app.post('/api/laboratorio/certificados/pdf', authLaboratorio, async (req, res) 
     let y = 180;
 
     // Laboratório
-    doc.fontSize(14).text(lab.nome, 50, y);
-    doc.fontSize(10).fillColor('#666').text(`NIF: ${lab.nif} | ${lab.provincia || ''}`, 50, y + 20);
-    doc.text(`Endereço: ${lab.endereco || ''} | Tel: ${lab.telefone || ''}`, 50, y + 35);
+    doc.fontSize(14).text(lab.name, 50, y);
+    doc.fontSize(10).fillColor('#666').text(`NIF: ${lab.nif} | ${lab.province}`, 50, y + 20);
+    doc.text(`Endereço: ${lab.address} | Tel: ${lab.phone1}`, 50, y + 35);
     y += 60;
 
     // Certificado
-    doc.fillColor('#006633').fontSize(12).text(`CERTIFICADO Nº: ${numero}`, 50, y);
+    doc.fillColor('#006633').fontSize(12).text(`CERTIFICADO Nº: ${certificate.certificateNumber}`, 50, y);
     doc.fontSize(10).fillColor('#666').text(`Emissão: ${new Date().toLocaleDateString('pt-PT')}`, 50, y + 15);
     y += 40;
 
     // Paciente
     doc.fillColor('#006633').text('PACIENTE:', 50, y);
     y += 20;
-    doc.fillColor('#000').fontSize(11).text(`Nome: ${certificado.paciente.nomeCompleto}`, 70, y);
+    doc.fillColor('#000').fontSize(11).text(`Nome: ${certificate.patientName}`, 70, y);
     y += 15;
-    if (certificado.paciente.bi) {
-      doc.text(`BI: ${certificado.paciente.bi}`, 70, y);
+    if (certificate.patientId) {
+      doc.text(`Documento: ${certificate.patientId}`, 70, y);
+      y += 15;
+    }
+    if (certificate.patientBirthDate) {
+      doc.text(`Nascimento: ${new Date(certificate.patientBirthDate).toLocaleDateString('pt-PT')}`, 70, y);
       y += 15;
     }
 
-    // Resultados
-    doc.fillColor('#006633').fontSize(12).text('RESULTADOS:', 50, y);
+    // Diagnóstico
+    doc.fillColor('#006633').text('DIAGNÓSTICO:', 50, y);
     y += 20;
-    doc.fillColor('#000').fontSize(10);
-    for (let [chave, valor] of Object.entries(certificado.dados || {})) {
-      doc.text(`${chave}: ${valor}`, 70, y);
+    doc.fillColor('#000').fontSize(11).text(`Categoria: ${certificate.diseaseCategory}`, 70, y);
+    y += 15;
+    doc.text(`Diagnóstico: ${certificate.diagnosis}`, 70, y);
+    y += 15;
+
+    // Resultados
+    if (certificate.testResults) {
+      doc.fillColor('#006633').text('RESULTADOS:', 50, y);
+      y += 20;
+      doc.fillColor('#000').fontSize(10).text(certificate.testResults, 70, y);
       y += 15;
-      if (y > 700) { doc.addPage(); y = 50; }
     }
 
     // QR Code
-    const qrData = `${numero}|${lab.nome}|${certificado.paciente.nomeCompleto}`;
+    const qrData = `${certificate.certificateNumber}|${lab.name}|${certificate.patientName}`;
     const qrBuffer = await QRCode.toBuffer(qrData, { width: 100 });
     doc.image(qrBuffer, 450, 650, { width: 100 });
 
