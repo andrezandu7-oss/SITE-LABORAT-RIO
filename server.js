@@ -1,4 +1,4 @@
-// server.js complet avec formulaire amélioré
+// server.js - Version complète avec correction du numéro de certificat
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -77,25 +77,28 @@ const certificateSchema = new mongoose.Schema({
 certificateSchema.index({ createdAt: -1 });
 certificateSchema.index({ patientName: 'text' });
 
-certificateSchema.pre('save', async function(next) {
-  if (!this.certificateNumber) {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const count = await mongoose.model('Certificate').countDocuments();
-    this.certificateNumber = `CERT-${year}${month}-${(count + 1).toString().padStart(6, '0')}`;
-  }
-  next();
-});
+// Removemos o pre-save que gerava número baseado em countDocuments, pois usaremos contador atômico
+// certificateSchema.pre('save', ...)  // NÃO USAR
 
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
+// Modelo para contador sequencial
+const counterSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  seq: { type: Number, default: 0 }
+});
+const Counter = mongoose.model('Counter', counterSchema);
+
 // ========== Utilitaires ==========
-function gerarNumeroCertificado() {
+async function gerarNumeroCertificado() {
+  const counter = await Counter.findByIdAndUpdate(
+    'certificado',
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
   const ano = new Date().getFullYear();
   const mes = (new Date().getMonth() + 1).toString().padStart(2, '0');
-  const random = crypto.randomBytes(4).toString('hex').toUpperCase();
-  return `CERT-${ano}${mes}-${random}`;
+  return `CERT-${ano}${mes}-${counter.seq.toString().padStart(6, '0')}`;
 }
 
 function calcularIdade(dataNascimento) {
@@ -301,7 +304,7 @@ carregarStats();
   `);
 });
 
-// ========== NOVA ROTA /novo-certificado COM MELHORIAS ==========
+// ========== ROTA /novo-certificado COM SELETORES DE DATA ==========
 app.get('/novo-certificado', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -652,7 +655,7 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
       return res.status(400).json({ erro: 'Campos obrigatórios' });
     }
 
-    const numero = gerarNumeroCertificado();
+    const numero = await gerarNumeroCertificado();  // ← AGORA COM AWAIT
     const idade = paciente.dataNascimento ? calcularIdade(paciente.dataNascimento) : null;
     let imc = null, classificacaoIMC = null;
     if (dados && dados.peso && dados.altura) {
