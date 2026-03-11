@@ -1,4 +1,4 @@
-<!-- public/novo-certificado.html (version allégée et optimisée) -->
+<!-- public/novo-certificado.html (version allégée avec les 8 types) -->
 <!DOCTYPE html>
 <html lang="pt">
 <head>
@@ -6,33 +6,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Novo Certificado - SNS</title>
   <style>
-    * {margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',sans-serif;}
-    body {background:#f0f4f0; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; padding:2rem 1rem;}
-    .container {max-width:950px; width:100%; background:white; border-radius:24px; box-shadow:0 20px 40px rgba(0,40,20,0.15); overflow:hidden;}
-    .header {background:#006633; color:white; padding:2rem 2.5rem;}
-    .header h1 {font-size:2rem; display:flex; align-items:center; gap:12px;}
-    .header h1 span {background:#ffcc00; color:#006633; font-size:1rem; padding:4px 12px; border-radius:40px;}
-    .header p {margin-top:6px;}
-    .form-card {padding:2.5rem;}
-    .section-title {font-size:1.4rem; font-weight:600; color:#006633; border-bottom:2px solid #cce8d5; padding-bottom:0.5rem; margin:2rem 0 1.5rem;}
-    .grid-2 {display:grid; grid-template-columns:repeat(2,1fr); gap:1.5rem;}
-    .campo {display:flex; flex-direction:column; gap:6px; margin-bottom:0.8rem;}
-    .full-width {grid-column:span 2;}
-    label {font-weight:600; font-size:0.85rem; text-transform:uppercase; color:#2d4a3b;}
-    input, select, textarea {padding:12px 14px; border:1.5px solid #d0ded5; border-radius:14px; font-size:0.95rem; outline:none;}
-    input:focus, select:focus {border-color:#006633; box-shadow:0 0 0 3px rgba(0,102,51,0.2);}
-    .tipo-selector {background:#f0f8f2; border-radius:20px; padding:1.5rem; margin-bottom:2rem; border-left:6px solid #006633;}
-    .btn-emitir {background:#006633; color:white; border:none; font-size:1.2rem; font-weight:700; padding:1.2rem; border-radius:50px; width:100%; cursor:pointer; margin-top:2.5rem; box-shadow:0 8px 16px rgba(0,102,51,0.3);}
-    .campos-dinamicos {background:#fafdfb; border-radius:24px; padding:1.8rem 1.5rem; border:1px dashed #99bbaa;}
-    .info-message {color:#2c5e3f; background:#e0f0e5; padding:1rem; border-radius:16px; margin-bottom:1.5rem;}
-    .resultado-popup {background:white; border-radius:24px; padding:2rem; text-align:center; max-width:450px; margin:2rem auto;}
-    .resultado-popup .sucesso {color:#006633; font-size:2rem; font-weight:bold;}
-    .resultado-popup .numero {background:#ffcc00; padding:0.5rem 1rem; border-radius:60px; font-family:monospace; font-size:1.4rem; margin:1rem 0; display:inline-block;}
-    .hidden {display:none;}
-    #modalPreview {position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; justify-content:center; align-items:center; z-index:1000; padding:20px;}
-    .modal-content {background:white; padding:2.5rem; border-radius:24px; max-width:600px; width:100%; max-height:90vh; overflow-y:auto;}
-    .preview-item {display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee; font-size:0.95rem;}
-    .preview-item b {color:#006633;}
+    * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',sans-serif; }
+    body { background:#f0f4f0; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; padding:2rem 1rem; }
+    .container { max-width:950px; width:100%; background:white; border-radius:24px; box-shadow:0 20px 40px rgba(0,40,20,0.15); overflow:hidden; }
+    .header { background:#006633; color:white; padding:2rem 2.5rem; }
+    .header h1 { font-size:2rem; display:flex; align-items:center; gap:12px; }
+    .header h1 span { background:#ffcc00; color:#006633; font-size:1rem; padding:4px 12px; border-radius:40px; }
+    .header p { margin-top:6px; }
+    .form-card { padding:2.5rem; }
+    .section-title { font-size:1.4rem; font-weight:600; color:#006633; border-bottom:2px solid #cce8d5; padding-bottom:0.5rem; margin:2rem 0 1.5rem; }
+    .grid-2 { display:grid; grid-template-columns:repeat(2,1fr); gap:1.5rem; }
+    .campo { display:flex; flex-direction:column; gap:6px; margin-bottom:0.8rem; }
+    .full-width { grid-column:span 2; }
+    label { font-weight:600; font-size:0.85rem; text-transform:uppercase; color:#2d4a3b; }
+    input, select, textarea { padding:12px 14px; border:1.5px solid #d0ded5; border-radius:14px; font-size:0.95rem; outline:none; }
+    input:focus, select:focus { border-color:#006633; box-shadow:0 0 0 3px rgba(0,102,51,0.2); }
+    .tipo-selector { background:#f0f8f2; border-radius:20px; padding:1.5rem; margin-bottom:2rem; border-left:6px solid #006633; }
+    .btn-emitir { background:#006633; color:white; border:none; font-size:1.2rem; font-weight:700; padding:1.2rem; border-radius:50px; width:100%; cursor:pointer; margin-top:2.5rem; box-shadow:0 8px 16px rgba(0,102,51,0.3); }
+    .campos-dinamicos { background:#fafdfb; border-radius:24px; padding:1.8rem 1.5rem; border:1px dashed #99bbaa; }
+    .info-message { color:#2c5e3f; background:#e0f0e5; padding:1rem; border-radius:16px; margin-bottom:1.5rem; }
+    .resultado-popup { background:white; border-radius:24px; padding:2rem; text-align:center; max-width:450px; margin:2rem auto; }
+    .resultado-popup .sucesso { color:#006633; font-size:2rem; font-weight:bold; }
+    .resultado-popup .numero { background:#ffcc00; padding:0.5rem 1rem; border-radius:60px; font-family:monospace; font-size:1.4rem; margin:1rem 0; display:inline-block; }
+    .hidden { display:none; }
+    #modalPreview { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; justify-content:center; align-items:center; z-index:1000; padding:20px; }
+    .modal-content { background:white; padding:2.5rem; border-radius:24px; max-width:600px; width:100%; max-height:90vh; overflow-y:auto; }
+    .preview-item { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee; font-size:0.95rem; }
+    .preview-item b { color:#006633; }
   </style>
 </head>
 <body>
