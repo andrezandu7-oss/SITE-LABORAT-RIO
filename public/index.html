@@ -1,0 +1,112 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratório - SNS Angola</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #006633, #00a86b);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .login-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            padding: 40px;
+            width: 400px;
+            text-align: center;
+        }
+        .login-card h1 {
+            color: #006633;
+            margin-bottom: 10px;
+        }
+        .login-card p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .input-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #006633;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #004d26;
+        }
+        .erro {
+            color: #c00;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h1>🔬 Laboratório</h1>
+        <p>Sistema Nacional de Saúde - Angola</p>
+        <div class="input-group">
+            <label>Chave API</label>
+            <input type="text" id="apiKey" placeholder="LAB-xxxxxxxx-xxxx">
+        </div>
+        <button onclick="login()">Acessar</button>
+        <div id="erro" class="erro"></div>
+    </div>
+
+    <script>
+        async function login() {
+            const apiKey = document.getElementById('apiKey').value;
+            const erroDiv = document.getElementById('erro');
+            if (!apiKey) {
+                erroDiv.innerText = 'Digite a chave API';
+                return;
+            }
+            try {
+                const res = await fetch('/api/laboratorio/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ apiKey })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('labNome', data.lab.nome);
+                    window.location.href = '/dashboard';
+                } else {
+                    erroDiv.innerText = data.erro || 'Erro na autenticação';
+                }
+            } catch (e) {
+                erroDiv.innerText = 'Erro de ligação ao servidor';
+            }
+        }
+    </script>
+</body>
+</html>
