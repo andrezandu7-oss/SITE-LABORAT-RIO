@@ -164,21 +164,108 @@ const authLaboratorio = async (req, res, next) => {
   }
 };
 
-// ============================================
-// Rotas HTML (embarquées)
-// ============================================
-app.get('/', (req, res) => {
+// server.js (extrait modifié pour inclure /novo-certificado directement)
+// ... (le reste du code reste identique)
+
+// Remplacer la route /novo-certificado par une version embarquée
+app.get('/novo-certificado', (req, res) => {
   res.send(`<!DOCTYPE html>
-<html>
+<html lang="pt">
 <head>
-  <title>Login Laboratório</title>
-  <style>body{background:#006633;font-family:Arial;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}.box{background:white;padding:30px;border-radius:10px;width:300px;box-shadow:0 5px 15px rgba(0,0,0,0.3);}h2{text-align:center;color:#006633;margin-bottom:20px;}input,button{width:100%;padding:12px;margin:8px 0;box-sizing:border-box;border-radius:5px;border:1px solid #ddd;}button{background:#006633;color:white;border:none;font-weight:bold;cursor:pointer;}button:hover{background:#004d26;}.erro{color:#c00;text-align:center;margin-top:10px;}</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Novo Certificado - SNS</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',sans-serif; }
+    body { background:#f0f4f0; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; padding:2rem 1rem; }
+    .container { max-width:950px; width:100%; background:white; border-radius:24px; box-shadow:0 20px 40px rgba(0,40,20,0.15); overflow:hidden; }
+    .header { background:#006633; color:white; padding:2rem 2.5rem; }
+    .header h1 { font-size:2rem; display:flex; align-items:center; gap:12px; }
+    .header h1 span { background:#ffcc00; color:#006633; font-size:1rem; padding:4px 12px; border-radius:40px; }
+    .header p { margin-top:6px; }
+    .form-card { padding:2.5rem; }
+    .section-title { font-size:1.4rem; font-weight:600; color:#006633; border-bottom:2px solid #cce8d5; padding-bottom:0.5rem; margin:2rem 0 1.5rem; }
+    .grid-2 { display:grid; grid-template-columns:repeat(2,1fr); gap:1.5rem; }
+    .campo { display:flex; flex-direction:column; gap:6px; margin-bottom:0.8rem; }
+    .full-width { grid-column:span 2; }
+    label { font-weight:600; font-size:0.85rem; text-transform:uppercase; color:#2d4a3b; }
+    input, select, textarea { padding:12px 14px; border:1.5px solid #d0ded5; border-radius:14px; font-size:0.95rem; outline:none; }
+    input:focus, select:focus { border-color:#006633; box-shadow:0 0 0 3px rgba(0,102,51,0.2); }
+    .tipo-selector { background:#f0f8f2; border-radius:20px; padding:1.5rem; margin-bottom:2rem; border-left:6px solid #006633; }
+    .btn-emitir { background:#006633; color:white; border:none; font-size:1.2rem; font-weight:700; padding:1.2rem; border-radius:50px; width:100%; cursor:pointer; margin-top:2.5rem; box-shadow:0 8px 16px rgba(0,102,51,0.3); }
+    .campos-dinamicos { background:#fafdfb; border-radius:24px; padding:1.8rem 1.5rem; border:1px dashed #99bbaa; }
+    .info-message { color:#2c5e3f; background:#e0f0e5; padding:1rem; border-radius:16px; margin-bottom:1.5rem; }
+    .resultado-popup { background:white; border-radius:24px; padding:2rem; text-align:center; max-width:450px; margin:2rem auto; }
+    .resultado-popup .sucesso { color:#006633; font-size:2rem; font-weight:bold; }
+    .resultado-popup .numero { background:#ffcc00; padding:0.5rem 1rem; border-radius:60px; font-family:monospace; font-size:1.4rem; margin:1rem 0; display:inline-block; }
+    .hidden { display:none; }
+    #modalPreview { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; justify-content:center; align-items:center; z-index:1000; padding:20px; }
+    .modal-content { background:white; padding:2.5rem; border-radius:24px; max-width:600px; width:100%; max-height:90vh; overflow-y:auto; }
+    .preview-item { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee; font-size:0.95rem; }
+    .preview-item b { color:#006633; }
+  </style>
 </head>
 <body>
-<div class="box"><h2>🔬 Laboratório SNS</h2><input type="text" id="apiKey" placeholder="Chave API (LAB-...)" autofocus><button onclick="login()">Entrar</button><p id="erro" class="erro"></p></div>
-<script>async function login(){const key=document.getElementById('apiKey').value,erro=document.getElementById('erro');if(!key){erro.innerText='Digite a chave API';return;}try{const r=await fetch('/api/laboratorio/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});const data=await r.json();if(r.ok){localStorage.setItem('token',data.token);localStorage.setItem('labNome',data.lab.nome);window.location.href='/dashboard';}else{erro.innerText=data.erro||'Erro na autenticação';}}catch(e){erro.innerText='Erro de ligação ao servidor';}}</script>
-</body></html>`);
+<div class="container">
+  <div class="header"><h1>➕ Novo Certificado <span>LAB</span></h1><p>Preencha os dados</p></div>
+  <div class="form-card">
+    <div id="loadingMessage" class="info-message">A validar...</div>
+    <form id="certForm" style="display:none;">
+      <div class="tipo-selector">
+        <label for="tipo">TIPO DE CERTIFICADO *</label>
+        <select id="tipo" required>
+          <option value="" disabled selected>— Selecione —</option>
+          <option value="1">1 - GENÓTIPO</option><option value="2">2 - BOA SAÚDE</option><option value="3">3 - INCAPACIDADE</option>
+          <option value="4">4 - APTIDÃO</option><option value="5">5 - SAÚDE MATERNA</option><option value="6">6 - PRÉ-NATAL</option>
+          <option value="7">7 - EPIDEMIOLÓGICO</option><option value="8">8 - CSD</option>
+        </select>
+      </div>
+      <div class="section-title">👤 Dados do paciente</div>
+      <div class="grid-2">
+        <div class="full-width campo"><label>Nome completo *</label><input type="text" id="nomeCompleto" required></div>
+        <div class="campo"><label>BI</label><input type="text" id="bi"></div>
+        <div class="campo"><label>Nascimento *</label><input type="date" id="dataNascimento" required></div>
+        <div class="campo"><label>Género</label><select id="genero"><option value="M">M</option><option value="F" selected>F</option></select></div>
+        <div class="full-width campo"><label>Telefone</label><input type="tel" id="telefone"></div>
+      </div>
+      <div class="section-title">🔬 Responsável</div>
+      <div class="grid-2">
+        <div class="full-width campo"><label>Nome *</label><input type="text" id="laborantinNome" required></div>
+        <div class="campo"><label>Registro</label><input type="text" id="laborantinRegistro"></div>
+      </div>
+      <div class="section-title">📋 Parâmetros específicos</div>
+      <div class="campos-dinamicos" id="camposEspecificosContainer"><p class="info-message">👆 Selecione um tipo para ver os campos.</p></div>
+      <button type="submit" class="btn-emitir" id="btnEmitir">📥 Emitir certificado</button>
+    </form>
+    <div id="resultadoArea" class="hidden"></div>
+  </div>
+</div>
+<div id="modalPreview">
+  <div class="modal-content">
+    <h2 style="color:#006633;">🔍 Confirmar Dados</h2>
+    <div id="previewContent"></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-top:2rem;">
+      <button type="button" onclick="fecharPreview()" style="background:#f0f0f0; padding:1.2rem; border-radius:50px; cursor:pointer;">Modificar</button>
+      <button type="button" id="btnConfirmarFinal" style="background:#006633; color:white; padding:1.2rem; border-radius:50px; cursor:pointer; font-weight:700;">Confirmar</button>
+    </div>
+  </div>
+</div>
+<script>
+const examesPorTipo={1:['grupoSanguineo','fatorRh','genotipo','hemoglobina','hematocrito','contagem_reticulocitos','eletroforese'],2:['peso','altura','pressaoArterial','frequenciaCardiaca','frequenciaRespiratoria','temperatura','saturacaoOxigenio','glicemia','colesterolTotal','triglicerideos'],3:['tipoIncapacidade','causa','grau','dataInicio','partesAfetadas','limitacoes','necessitaAcompanhante'],4:['tipoAptidao','modalidade','resultado','restricoes','validade'],5:['gestacoes','partos','abortos','nascidosVivos','dum','dpp','idadeGestacional','consultasCPN','hemograma','gotaEspessa','hiv','vdrl','hbs','glicemia','creatinina','ureia','tgo','grupoSanguineo','fatorRh','exsudadoVaginal','pesoAtual','alturaUterina','batimentosCardiacosFeto','movimentosFetais','edema','proteinuria'],6:['grupoSanguineo','fatorRh','hemograma','gotaEspessa','hiv','vdrl','hbs','vidal','glicemia','creatinina','ureia','tgo','testeGravidez','exsudadoVaginal','vs','falsiformacao'],7:['doenca','outraDoenca','dataInicioSintomas','dataDiagnostico','metodoDiagnostico','tipoExame','resultado','tratamento','internamento','dataInternamento','contatos'],8:['destino','motivoViagem','dataPartida','dataRetorno','vacinaFebreAmarela','dataVacinaFebreAmarela','loteVacinaFebreAmarela','vacinaCovid19','dosesCovid','testeCovid','tipoTesteCovid','dataTesteCovid','resultadoTesteCovid','outrasVacinas','medicamentos','condicoesEspeciais','recomendacoes']};
+const opcoesSelect={'grupoSanguineo':['A','B','AB','O'],'fatorRh':['Positivo (+)','Negativo (-)'],'genotipo':['AA','AS','SS','AC','SC'],'tipoIncapacidade':['Física','Mental','Sensorial','Múltipla'],'grau':['Leve','Moderado','Grave'],'tipoAptidao':['Apto','Inapto','Apto com restrições'],'modalidade':['Desportiva','Laboral','Escolar'],'resultado':['Positivo','Negativo','Inconclusivo'],'metodoDiagnostico':['Clínico','Laboratorial','Imagem'],'tipoExame':['PCR','Antigénio','Sorologia'],'vacinaFebreAmarela':['Sim','Não'],'vacinaCovid19':['Sim','Não'],'testeCovid':['Sim','Não']};
+function formatarNomeCampo(chave){return chave.replace(/([A-Z])/g,' $1').replace(/^./,s=>s.toUpperCase());}
+const form=document.getElementById('certForm'),tipoSelect=document.getElementById('tipo'),containerCampos=document.getElementById('camposEspecificosContainer'),loading=document.getElementById('loadingMessage'),resultadoArea=document.getElementById('resultadoArea'),modal=document.getElementById('modalPreview'),previewContent=document.getElementById('previewContent'),btnConfirmar=document.getElementById('btnConfirmarFinal'),btnEmitir=document.getElementById('btnEmitir');
+const token=localStorage.getItem('token');if(!token){loading.innerText='❌ Sessão expirada';setTimeout(()=>window.location.href='/',2000);}else{loading.style.display='none';form.style.display='block';}
+tipoSelect.addEventListener('change',function(){const tipo=parseInt(this.value),lista=examesPorTipo[tipo]||[];let html='<div class="grid-2">';lista.forEach(campo=>{const label=formatarNomeCampo(campo);if(opcoesSelect[campo]){html+=`<div class="campo"><label>${label}</label><select name="${campo}" id="campo_${campo}"><option value="" selected disabled>Selec...</option>`+opcoesSelect[campo].map(opt=>`<option value="${opt}">${opt}</option>`).join('')+'</select></div>';}else{let tipoInput='text';if(campo.includes('data')||['dum','dpp','dataInicio','dataDiagnostico','dataInternamento','dataPartida','dataRetorno','dataVacinaFebreAmarela','dataTesteCovid'].includes(campo))tipoInput='date';if(['peso','altura','gestacoes','partos','abortos','nascidosVivos','dosesCovid','validade','idadeGestacional','consultasCPN','contagem_reticulocitos','hemoglobina','hematocrito','glicemia','colesterolTotal','triglicerideos','frequenciaCardiaca','frequenciaRespiratoria','temperatura','saturacaoOxigenio'].includes(campo))tipoInput='number';html+=`<div class="campo"><label>${label}</label><input type="${tipoInput}" name="${campo}" id="campo_${campo}" placeholder="${label}" step="any"></div>`;}});html+='</div>';containerCampos.innerHTML=html;});
+form.addEventListener('submit',function(e){e.preventDefault();let html=`<div style="margin-bottom:15px;"><strong>Paciente:</strong> ${document.getElementById('nomeCompleto').value}</div><div style="border-top:1px solid #eee; padding-top:10px;">`;containerCampos.querySelectorAll('input, select').forEach(i=>{if(i.value)html+=`<div class="preview-item"><span>${formatarNomeCampo(i.name)}</span> <b>${i.value}</b></div>`;});html+='</div>';previewContent.innerHTML=html;modal.style.display='flex';});
+window.fecharPreview=()=>{modal.style.display='none';};
+btnConfirmar.addEventListener('click',async function(){fecharPreview();btnEmitir.disabled=true;btnEmitir.textContent='⏳ Emitindo...';const tipo=parseInt(tipoSelect.value),payload={tipo,paciente:{nomeCompleto:document.getElementById('nomeCompleto').value,bi:document.getElementById('bi').value,dataNascimento:document.getElementById('dataNascimento').value,genero:document.getElementById('genero').value,telefone:document.getElementById('telefone').value},laborantin:{nome:document.getElementById('laborantinNome').value,registro:document.getElementById('laborantinRegistro').value},dados:{}};(examesPorTipo[tipo]||[]).forEach(campo=>{const el=document.getElementById(`campo_${campo}`);if(el&&el.value.trim()!==''){if(['peso','altura','gestacoes','partos','abortos','nascidosVivos','dosesCovid','idadeGestacional','consultasCPN','hemoglobina','hematocrito','glicemia','colesterolTotal','triglicerideos','frequenciaCardiaca','frequenciaRespiratoria','temperatura','saturacaoOxigenio'].includes(campo)){payload.dados[campo]=parseFloat(el.value.replace(',','.'));}else{payload.dados[campo]=el.value.trim();}}});try{const r=await fetch('/api/laboratorio/certificados',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':token},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw new Error(data.erro||'Erro');form.style.display='none';resultadoArea.innerHTML=`<div class="resultado-popup"><div class="sucesso">✅ Sucesso</div><div class="numero">${data.numero}</div><p><strong>IMC:</strong> ${data.imc||'—'} | ${data.classificacaoIMC||'—'}</p><p><strong>Idade:</strong> ${data.idade||'?'} anos</p><button class="btn-emitir" onclick="location.reload()">➕ Novo</button></div>`;resultadoArea.classList.remove('hidden');}catch(error){alert('Erro: '+error.message);}finally{btnEmitir.disabled=false;btnEmitir.textContent='📥 Emitir certificado';}});
+</script>
+</body>
+</html>`);
 });
+
+// ... le reste du code reste inchangé
 
 app.get('/dashboard', (req, res) => {
   res.send(`<!DOCTYPE html>
