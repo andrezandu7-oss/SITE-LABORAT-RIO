@@ -1,4 +1,4 @@
-// server.js (corrigé avec modèle Establishment partagé)
+// server.js (avec logs détaillés)
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -66,7 +66,7 @@ const establishmentSchema = new mongoose.Schema({
   technicalResponsible: { type: String, required: true, trim: true },
   licenseNumber: { type: String, required: true, trim: true },
   licenseValidity: { type: Date, required: true },
-  keyHash: { type: String, required: true, unique: true },
+  keyHash: { type: String, required: true },
   keyPrefix: { type: String, default: 'SNS-' },
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });
@@ -83,7 +83,7 @@ const Establishment = mongoose.model('Establishment', establishmentSchema);
 // ============================================
 const certificateSchema = new mongoose.Schema({
   establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true },
-  createdBy: { type: String }, // pode ser o nome do laborantin por enquanto
+  createdBy: { type: String },
   certificateNumber: { type: String, required: true, unique: true },
   patientName: { type: String, required: true },
   patientId: { type: String },
@@ -118,32 +118,35 @@ function gerarNumeroCertificado() {
   return `CERT-${ano}${mes}-${random}`;
 }
 
-// Middleware de autenticação por API Key (via Establishment)
+// Middleware de autenticação por API Key
 const authLaboratorio = async (req, res, next) => {
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) return res.status(401).json({ erro: 'API Key não fornecida' });
 
-  // Extrair prefixo (deve ser LAB)
   const prefix = apiKey.split('-')[0];
   if (prefix !== 'LAB') {
     return res.status(403).json({ erro: 'Chave inválida para laboratório' });
   }
 
-  // Buscar estabelecimentos do tipo laboratorio
-  const labs = await Establishment.find({ establishmentType: 'laboratorio' }).select('+keyHash');
-  let lab = null;
-  for (const est of labs) {
-    if (await bcrypt.compare(apiKey, est.keyHash)) {
-      lab = est;
-      break;
+  try {
+    const labs = await Establishment.find({ establishmentType: 'laboratorio' });
+    let lab = null;
+    for (const est of labs) {
+      if (await bcrypt.compare(apiKey, est.keyHash)) {
+        lab = est;
+        break;
+      }
     }
+
+    if (!lab) return res.status(401).json({ erro: 'Chave API inválida' });
+    if (lab.status === 'Inativo') return res.status(403).json({ erro: 'Laboratório inativo' });
+
+    req.lab = lab;
+    next();
+  } catch (error) {
+    console.error('Erro no auth:', error);
+    res.status(500).json({ erro: 'Erro interno' });
   }
-
-  if (!lab) return res.status(401).json({ erro: 'Chave API inválida' });
-  if (lab.status === 'Inativo') return res.status(403).json({ erro: 'Laboratório inativo' });
-
-  req.lab = lab;
-  next();
 };
 
 // ============================================
@@ -399,29 +402,49 @@ app.get('/novo-certificado', (req, res) => {
 });
 
 // ============================================
-// API de Login
+// API de Login (avec logs détaillés)
 // ============================================
 app.post('/api/laboratorio/login', async (req, res) => {
   try {
     const { apiKey } = req.body;
+    console.log('Tentativa de login avec clé:', apiKey);
     if (!apiKey) return res.status(400).json({ erro: 'Chave API não fornecida' });
 
     const prefix = apiKey.split('-')[0];
+    console.log('Préfixe:', prefix);
     if (prefix !== 'LAB') {
       return res.status(403).json({ erro: 'Chave inválida para laboratório' });
     }
 
-    const labs = await Establishment.find({ establishmentType: 'laboratorio' }).select('+keyHash');
+    // Récupérer tous les laboratoires
+    const labs = await Establishment.find({ establishmentType: 'laboratorio' });
+    console.log('Nombre de laboratoires trouvés:', labs.length);
+
     let lab = null;
     for (const est of labs) {
-      if (await bcrypt.compare(apiKey, est.keyHash)) {
-        lab = est;
-        break;
+      console.log('Comparaison avec:', est.name);
+      try {
+        const match = await bcrypt.compare(apiKey, est.keyHash);
+        if (match) {
+          lab = est;
+          console.log('Correspondance trouvée!');
+          break;
+        }
+      } catch (bcryptError) {
+        console.error('Erreur bcrypt pour', est.name, bcryptError);
       }
     }
 
-    if (!lab) return res.status(401).json({ erro: 'Chave API inválida' });
-    if (lab.status === 'Inativo') return res.status(403).json({ erro: 'Laboratório inativo' });
+    if (!lab) {
+      console.log('Aucune correspondance');
+      return res.status(401).json({ erro: 'Chave API inválida' });
+    }
+
+    console.log('Laboratoire trouvé:', lab.name);
+    console.log('Statut virtuel:', lab.status);
+    if (lab.status === 'Inativo') {
+      return res.status(403).json({ erro: 'Laboratório inativo' });
+    }
 
     const token = jwt.sign(
       { id: lab._id, nome: lab.name },
@@ -431,8 +454,8 @@ app.post('/api/laboratorio/login', async (req, res) => {
 
     res.json({ token, lab: { nome: lab.name } });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ erro: 'Erro interno do servidor' });
+    console.error('ERREUR DÉTAILLÉE:', error);
+    res.status(500).json({ erro: 'Erro interno do servidor', detalhe: error.message });
   }
 });
 
@@ -444,6 +467,7 @@ app.get('/api/laboratorio/certificados', authLaboratorio, async (req, res) => {
     const certs = await Certificate.find({ establishmentId: req.lab._id }).sort({ createdAt: -1 });
     res.json(certs);
   } catch (error) {
+    console.error('Erro ao listar certificados:', error);
     res.status(500).json({ erro: 'Erro ao listar certificados' });
   }
 });
@@ -471,6 +495,7 @@ app.post('/api/laboratorio/certificados', authLaboratorio, async (req, res) => {
 
     res.json({ success: true, numero });
   } catch (error) {
+    console.error('Erro ao criar certificado:', error);
     res.status(500).json({ erro: error.message });
   }
 });
@@ -548,6 +573,7 @@ app.get('/api/laboratorio/certificados/:id/pdf', authLaboratorio, async (req, re
 
     doc.end();
   } catch (error) {
+    console.error('Erro PDF:', error);
     res.status(500).json({ erro: error.message });
   }
 });
