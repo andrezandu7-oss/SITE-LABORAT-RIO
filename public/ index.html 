@@ -1,0 +1,437 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratório - Sistema de Certificados</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f3f4f6;
+            color: #1f2937;
+            line-height: 1.5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        /* Login */
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .login-container h1 {
+            color: #005a9c;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #4b5563;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            font-family: inherit;
+        }
+        .btn {
+            width: 100%;
+            padding: 1rem;
+            background: #005a9c;
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #004080; }
+        .btn-secondary {
+            background: white;
+            color: #005a9c;
+            border: 1px solid #005a9c;
+        }
+        .btn-secondary:hover { background: #e6f0fa; }
+        .alert {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            display: none;
+        }
+        .alert.success {
+            background: #d1fae5;
+            color: #065f46;
+            display: block;
+        }
+        .alert.error {
+            background: #fee2e2;
+            color: #991b1b;
+            display: block;
+        }
+        /* Dashboard */
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+        .card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            margin-bottom: 1.5rem;
+        }
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #005a9c;
+            margin-bottom: 1rem;
+        }
+        .cert-form {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+        .cert-form .full-width {
+            grid-column: span 2;
+        }
+        .cert-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .cert-item {
+            padding: 1rem;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .cert-item:last-child {
+            border-bottom: none;
+        }
+        .badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .badge.success { background: #d1fae5; color: #065f46; }
+        .badge.info { background: #e6f0fa; color: #005a9c; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        /* Mensagem temporária */
+        .temp-password {
+            background: #fef3c7;
+            border-left: 4px solid #d97706;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="loginView" class="container">
+        <div class="login-container">
+            <h1><i class="fas fa-flask"></i> Laboratório</h1>
+            <div class="form-group">
+                <label>Chave API do Estabelecimento</label>
+                <input type="text" id="apiKey" placeholder="LAB-XXXXXXXX-XXXXXXXX" required>
+            </div>
+            <button onclick="loginWithKey()" class="btn">Aceder ao Sistema</button>
+            <div id="loginAlert" class="alert"></div>
+        </div>
+    </div>
+
+    <div id="dashboardView" style="display: none;">
+        <div class="container">
+            <div class="dashboard-header">
+                <h1><i class="fas fa-flask"></i> <span id="establishmentName"></span></h1>
+                <div>
+                    <span id="userRole" style="margin-right: 1rem;"></span>
+                    <button onclick="logout()" class="btn-secondary" style="width: auto;">Sair</button>
+                </div>
+            </div>
+
+            <div id="tempPasswordMessage" class="temp-password" style="display: none;"></div>
+
+            <div class="card">
+                <div class="card-title">Criar Novo Certificado</div>
+                <form id="certForm">
+                    <div class="cert-form">
+                        <div class="full-width form-group">
+                            <label>Nome do Paciente *</label>
+                            <input type="text" id="patientName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Documento de Identificação</label>
+                            <input type="text" id="patientId">
+                        </div>
+                        <div class="form-group">
+                            <label>Data de Nascimento</label>
+                            <input type="date" id="patientBirthDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Categoria da Doença *</label>
+                            <select id="diseaseCategory" required>
+                                <option value="">Selecione</option>
+                                <option value="Malaria">Malária</option>
+                                <option value="Tuberculose">Tuberculose</option>
+                                <option value="COVID-19">COVID-19</option>
+                                <option value="HIV/SIDA">HIV/SIDA</option>
+                                <option value="Hepatite">Hepatite</option>
+                                <option value="Febre Tifoide">Febre Tifoide</option>
+                                <option value="Outra">Outra</option>
+                            </select>
+                        </div>
+                        <div class="full-width form-group">
+                            <label>Diagnóstico *</label>
+                            <textarea id="diagnosis" rows="3" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Data do Teste</label>
+                            <input type="date" id="testDate" value="">
+                        </div>
+                        <div class="form-group">
+                            <label>Resultados Detalhados (opcional)</label>
+                            <textarea id="testResults" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn" style="margin-top: 1rem;">Gerar Certificado PDF</button>
+                </form>
+                <div id="certAlert" class="alert"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Certificados Recentes</div>
+                <div class="cert-list" id="certList">
+                    <p style="text-align: center; padding: 2rem;">Carregando...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let token = localStorage.getItem('token');
+        let userRole = localStorage.getItem('userRole');
+        let establishmentId = localStorage.getItem('establishmentId');
+
+        // Se já estiver logado, mostrar dashboard
+        if (token) {
+            showDashboard();
+        }
+
+        async function loginWithKey() {
+            const apiKey = document.getElementById('apiKey').value;
+            const alertDiv = document.getElementById('loginAlert');
+            
+            if (!apiKey) {
+                alertDiv.className = 'alert error';
+                alertDiv.innerHTML = 'Por favor, insira a chave API.';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/laboratorio/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ apiKey })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    token = data.token;
+                    userRole = data.role;
+                    establishmentId = data.establishmentId;
+                    localStorage.setItem('token', token);
+                    localStorage.setItem('userRole', userRole);
+                    localStorage.setItem('establishmentId', establishmentId);
+                    
+                    if (data.tempPassword) {
+                        // Mostrar senha temporária
+                        document.getElementById('tempPasswordMessage').innerHTML = `
+                            <strong>Senha temporária:</strong> ${data.tempPassword}<br>
+                            <small>Guarde esta senha. Poderá alterá-la depois.</small>
+                        `;
+                        document.getElementById('tempPasswordMessage').style.display = 'block';
+                    }
+                    
+                    showDashboard();
+                } else {
+                    alertDiv.className = 'alert error';
+                    alertDiv.innerHTML = data.erro || 'Erro na autenticação';
+                }
+            } catch (error) {
+                alertDiv.className = 'alert error';
+                alertDiv.innerHTML = 'Erro de ligação ao servidor';
+            }
+        }
+
+        function showDashboard() {
+            document.getElementById('loginView').style.display = 'none';
+            document.getElementById('dashboardView').style.display = 'block';
+            document.getElementById('userRole').innerText = userRole === 'responsable' ? 'Responsável' : 'Laborantin';
+            loadEstablishmentInfo();
+            loadRecentCertificates();
+            
+            // Pré-encher data do teste com hoje
+            const hoje = new Date().toISOString().split('T')[0];
+            document.getElementById('testDate').value = hoje;
+        }
+
+        async function loadEstablishmentInfo() {
+            try {
+                const response = await fetch('/api/laboratorio/establishment', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                document.getElementById('establishmentName').innerText = data.name;
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        async function loadRecentCertificates() {
+            try {
+                const response = await fetch('/api/laboratorio/certificates', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const certificates = await response.json();
+                const certList = document.getElementById('certList');
+                
+                if (certificates.length === 0) {
+                    certList.innerHTML = '<p style="text-align: center; padding: 2rem;">Nenhum certificado emitido.</p>';
+                    return;
+                }
+
+                certList.innerHTML = certificates.map(cert => `
+                    <div class="cert-item">
+                        <div>
+                            <strong>${cert.certificateNumber}</strong><br>
+                            <small>${cert.patientName} | ${new Date(cert.createdAt).toLocaleDateString('pt-PT')}</small>
+                        </div>
+                        <div>
+                            <span class="badge info">${cert.diseaseCategory}</span>
+                            <button onclick="downloadPDF('${cert._id}')" style="margin-left: 0.5rem; background: none; border: none; color: #005a9c; cursor: pointer;">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        document.getElementById('certForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const certData = {
+                patientName: document.getElementById('patientName').value,
+                patientId: document.getElementById('patientId').value,
+                patientBirthDate: document.getElementById('patientBirthDate').value,
+                diseaseCategory: document.getElementById('diseaseCategory').value,
+                diagnosis: document.getElementById('diagnosis').value,
+                testDate: document.getElementById('testDate').value,
+                testResults: document.getElementById('testResults').value
+            };
+
+            try {
+                const response = await fetch('/api/laboratorio/certificates', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(certData)
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'certificado.pdf';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    document.getElementById('certAlert').className = 'alert success';
+                    document.getElementById('certAlert').innerHTML = 'Certificado gerado com sucesso!';
+                    document.getElementById('certForm').reset();
+                    document.getElementById('testDate').value = new Date().toISOString().split('T')[0];
+                    loadRecentCertificates();
+                } else {
+                    const error = await response.json();
+                    document.getElementById('certAlert').className = 'alert error';
+                    document.getElementById('certAlert').innerHTML = error.erro || 'Erro ao gerar certificado';
+                }
+            } catch (error) {
+                document.getElementById('certAlert').className = 'alert error';
+                document.getElementById('certAlert').innerHTML = 'Erro de ligação ao servidor';
+            }
+        });
+
+        async function downloadPDF(certId) {
+            window.open(`/api/laboratorio/certificates/${certId}/pdf`, '_blank');
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('userRole');
+            localStorage.removeItem('establishmentId');
+            token = null;
+            document.getElementById('loginView').style.display = 'block';
+            document.getElementById('dashboardView').style.display = 'none';
+            document.getElementById('apiKey').value = '';
+            document.getElementById('tempPasswordMessage').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
