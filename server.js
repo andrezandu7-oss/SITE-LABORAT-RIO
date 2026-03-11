@@ -1,4 +1,4 @@
-// server.js corrigé
+// server.js corrigé avec authentification JWT cohérente
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -121,34 +121,25 @@ function calcularIMC(peso, altura) {
   return { imc: imc.toFixed(2), classificacao };
 }
 
-// Middleware d'authentification
-const authLaboratorio = async (req, res, next) => {
-  const apiKey = req.headers['x-api-key'];
-  if (!apiKey) return res.status(401).json({ erro: 'API Key não fornecida' });
-
-  const prefix = apiKey.split('-')[0];
-  if (prefix !== 'LAB') return res.status(403).json({ erro: 'Chave inválida para laboratório' });
+// ========== Middleware JWT (remplace authLaboratorio) ==========
+const authJWT = async (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ erro: 'Token não fornecido' });
 
   try {
-    const labs = await Establishment.find({ establishmentType: 'laboratorio', keyPrefix: 'LAB-' }).select('+keyHash');
-    let lab = null;
-    for (const est of labs) {
-      if (await bcrypt.compare(apiKey, est.keyHash)) {
-        lab = est;
-        break;
-      }
-    }
-    if (!lab) return res.status(401).json({ erro: 'Chave API inválida' });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret-key');
+    const lab = await Establishment.findById(decoded.id);
+    if (!lab) return res.status(401).json({ erro: 'Laboratório não encontrado' });
     if (lab.status === 'Inativo') return res.status(403).json({ erro: 'Laboratório inativo' });
     req.lab = lab;
     next();
-  } catch (error) {
-    console.error('Erro auth:', error);
-    res.status(500).json({ erro: 'Erro interno' });
+  } catch (err) {
+    return res.status(403).json({ erro: 'Token inválido' });
   }
 };
 
-// ========== Routes HTML (simplifiées pour éviter les erreurs) ==========
+// ========== Routes HTML ==========
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -159,7 +150,28 @@ app.get('/', (req, res) => {
 </head>
 <body>
 <div class="box"><h2>🔬 Laboratório SNS</h2><input type="text" id="apiKey" placeholder="Chave API (LAB-...)" autofocus><button onclick="login()">Entrar</button><p id="erro" class="erro"></p></div>
-<script>async function login(){const key=document.getElementById('apiKey').value,erro=document.getElementById('erro');if(!key){erro.innerText='Digite a chave API';return;}try{const r=await fetch('/api/laboratorio/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})});const data=await r.json();if(r.ok){localStorage.setItem('token',data.token);localStorage.setItem('labNome',data.lab.nome);window.location.href='/dashboard';}else{erro.innerText=data.erro||'Erro na autenticação';}}catch(e){erro.innerText='Erro de ligação ao servidor';}}</script>
+<script>
+async function login(){
+  const key=document.getElementById('apiKey').value;
+  const erro=document.getElementById('erro');
+  if(!key){ erro.innerText='Digite a chave API'; return; }
+  try{
+    const r=await fetch('/api/laboratorio/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({apiKey:key})
+    });
+    const data=await r.json();
+    if(r.ok){
+      localStorage.setItem('token',data.token);
+      localStorage.setItem('labNome',data.lab.nome);
+      window.location.href='/dashboard';
+    } else {
+      erro.innerText=data.erro||'Erro na autenticação';
+    }
+  }catch(e){ erro.innerText='Erro de ligação ao servidor'; }
+}
+</script>
 </body></html>
   `);
 });
@@ -241,7 +253,7 @@ function mostrarSecao(secao) {
 }
 async function carregarStats() {
   try {
-    const r = await fetch('/api/laboratorio/stats', { headers: { 'x-api-key': token } });
+    const r = await fetch('/api/laboratorio/stats', { headers: { 'Authorization': 'Bearer ' + token } });
     const data = await r.json();
     document.getElementById('totalCert').innerText = data.total;
     let html = '';
@@ -258,7 +270,7 @@ async function carregarCertificados() {
   if (busca) params.append('paciente', busca);
   if (params.toString()) url += '?' + params.toString();
   try {
-    const r = await fetch(url, { headers: { 'x-api-key': token } });
+    const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
     const certs = await r.json();
     let html = '';
     if (certs.length === 0) html = '<tr><td colspan="5" style="text-align:center;">Nenhum certificado</td></tr>';
@@ -272,7 +284,7 @@ async function carregarCertificados() {
 }
 async function baixarPDF(id) {
   try {
-    const r = await fetch('/api/laboratorio/certificados/' + id + '/pdf', { headers: { 'x-api-key': token } });
+    const r = await fetch('/api/laboratorio/certificados/' + id + '/pdf', { headers: { 'Authorization': 'Bearer ' + token } });
     if (!r.ok) throw new Error();
     const blob = await r.blob();
     const url = window.URL.createObjectURL(blob);
@@ -462,7 +474,7 @@ document.getElementById('btnConfirmarFinal').addEventListener('click', async fun
   try {
     const r = await fetch('/api/laboratorio/certificados', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': token },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify(payload)
     });
     const data = await r.json();
@@ -498,7 +510,7 @@ app.post('/api/laboratorio/login', async (req, res) => {
     if (!lab) return res.status(401).json({ erro: 'Chave API inválida' });
     if (lab.status === 'Inativo') return res.status(403).json({ erro: 'Laboratório inativo' });
 
-    const token = jwt.sign({ id: lab._id, nome: lab.name }, process.env.JWT_SECRET || 'secret-key', { expiresIn: '7d' });
+    const token = jwt.sign({ id: lab._id }, process.env.JWT_SECRET || 'secret-key', { expiresIn: '7d' });
     res.json({ token, lab: { nome: lab.name } });
   } catch (error) {
     console.error('Erro login:', error);
@@ -506,7 +518,7 @@ app.post('/api/laboratorio/login', async (req, res) => {
   }
 });
 
-app.get('/api/laboratorio/stats', authLaboratorio, async (req, res) => {
+app.get('/api/laboratorio/stats', authJWT, async (req, res) => {
   try {
     const total = await Certificate.countDocuments({ establishmentId: req.lab._id });
     const porTipo = await Certificate.aggregate([
@@ -520,7 +532,7 @@ app.get('/api/laboratorio/stats', authLaboratorio, async (req, res) => {
   }
 });
 
-app.get('/api/laboratorio/certificados', authLaboratorio, async (req, res) => {
+app.get('/api/laboratorio/certificados', authJWT, async (req, res) => {
   try {
     const { tipo, paciente } = req.query;
     const query = { establishmentId: req.lab._id };
@@ -534,7 +546,7 @@ app.get('/api/laboratorio/certificados', authLaboratorio, async (req, res) => {
   }
 });
 
-app.post('/api/laboratorio/certificados', authLaboratorio, async (req, res) => {
+app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
   try {
     const { tipo, paciente, laborantin, dados } = req.body;
     if (!tipo || !paciente || !paciente.nomeCompleto || !laborantin || !laborantin.nome) {
@@ -576,7 +588,7 @@ app.post('/api/laboratorio/certificados', authLaboratorio, async (req, res) => {
   }
 });
 
-app.get('/api/laboratorio/certificados/:id/pdf', authLaboratorio, async (req, res) => {
+app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
   try {
     const certificate = await Certificate.findById(req.params.id);
     if (!certificate) return res.status(404).json({ erro: 'Certificado não encontrado' });
