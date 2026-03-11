@@ -1,6 +1,4 @@
-// ============================================
-// server.js - Laboratório
-// ============================================
+// server.js
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -11,6 +9,7 @@ const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -32,7 +31,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public'))); // arquivos estáticos
 
 // ============================================
-// Modelos (mesmos do ministério, simplificados)
+// Modelos
 // ============================================
 const laboratorioSchema = new mongoose.Schema({
   nome: { type: String, required: true },
@@ -96,16 +95,273 @@ const authLaboratorio = async (req, res, next) => {
 };
 
 // ============================================
-// Rotas Públicas (HTML)
+// Rotas Públicas (HTML embutido)
 // ============================================
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Login Laboratório</title>
+  <style>
+    body{background:#006633;font-family:Arial;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}
+    .box{background:white;padding:30px;border-radius:10px;width:300px;box-shadow:0 5px 15px rgba(0,0,0,0.3);}
+    h2{text-align:center;color:#006633;margin-bottom:20px;}
+    input,button{width:100%;padding:12px;margin:8px 0;box-sizing:border-box;border-radius:5px;border:1px solid #ddd;}
+    button{background:#006633;color:white;border:none;font-weight:bold;cursor:pointer;}
+    button:hover{background:#004d26;}
+    .erro{color:#c00;text-align:center;margin-top:10px;}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>🔬 Laboratório SNS</h2>
+    <input type="text" id="apiKey" placeholder="Chave API (LAB-...)" autofocus>
+    <button onclick="login()">Entrar</button>
+    <p id="erro" class="erro"></p>
+  </div>
+  <script>
+    async function login() {
+      const key = document.getElementById('apiKey').value;
+      const erro = document.getElementById('erro');
+      if (!key) { erro.innerText = 'Digite a chave API'; return; }
+      try {
+        const r = await fetch('/api/laboratorio/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: key })
+        });
+        const data = await r.json();
+        if (r.ok) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('labNome', data.lab.nome);
+          window.location.href = '/dashboard';
+        } else {
+          erro.innerText = data.erro || 'Erro na autenticação';
+        }
+      } catch (e) {
+        erro.innerText = 'Erro de ligação ao servidor';
+      }
+    }
+  </script>
+</body>
+</html>
+  `);
 });
+
 app.get('/dashboard', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dashboard Laboratório</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f7f6;padding:20px;}
+    .header{background:#006633;color:white;padding:15px 20px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;}
+    .container{max-width:1200px;margin:20px auto;}
+    .card{background:white;border-radius:8px;padding:20px;margin-bottom:20px;box-shadow:0 2px 5px rgba(0,0,0,0.1);}
+    table{width:100%;border-collapse:collapse;}
+    th{background:#f0f0f0;padding:10px;text-align:left;}
+    td{padding:10px;border-bottom:1px solid #eee;}
+    button{padding:8px 15px;background:#006633;color:white;border:none;border-radius:5px;cursor:pointer;}
+    .logout{background:#c00;}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>🔬 <span id="labNome"></span></h2>
+    <button class="logout" onclick="logout()">Sair</button>
+  </div>
+  <div class="container">
+    <div class="card">
+      <h3>Certificados Recentes</h3>
+      <div id="certificados"></div>
+    </div>
+    <button onclick="window.location.href='/novo-certificado'">➕ Novo Certificado</button>
+  </div>
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/';
+    document.getElementById('labNome').innerText = localStorage.getItem('labNome') || '';
+
+    async function carregarCertificados() {
+      try {
+        const r = await fetch('/api/laboratorio/certificados', {
+          headers: { 'x-api-key': token }
+        });
+        const certs = await r.json();
+        let html = '<table><tr><th>Número</th><th>Paciente</th><th>Data</th><th>Ações</th></tr>';
+        certs.forEach(c => {
+          html += '<tr>' +
+            '<td>' + c.numero + '</td>' +
+            '<td>' + c.paciente.nomeCompleto + '</td>' +
+            '<td>' + new Date(c.emitidoEm).toLocaleDateString('pt-PT') + '</td>' +
+            '<td><button onclick="baixarPDF(\'' + c.numero + '\')">📄 PDF</button></td>' +
+            '</tr>';
+        });
+        html += '</table>';
+        document.getElementById('certificados').innerHTML = html;
+      } catch (e) {
+        document.getElementById('certificados').innerHTML = '<p>Erro ao carregar</p>';
+      }
+    }
+
+    async function baixarPDF(numero) {
+      try {
+        const r = await fetch('/api/laboratorio/certificados/pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': token },
+          body: JSON.stringify({ numero })
+        });
+        if (!r.ok) throw new Error();
+        const blob = await r.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = numero + '.pdf';
+        a.click();
+      } catch (e) {
+        alert('Erro ao gerar PDF');
+      }
+    }
+
+    function logout() {
+      localStorage.clear();
+      window.location.href = '/';
+    }
+
+    carregarCertificados();
+  </script>
+</body>
+</html>
+  `);
 });
+
 app.get('/novo-certificado', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'novo-certificado.html'));
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Novo Certificado</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f7f6;padding:20px;}
+    .header{background:#006633;color:white;padding:15px 20px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;}
+    .container{max-width:800px;margin:20px auto;}
+    .card{background:white;border-radius:8px;padding:20px;margin-bottom:20px;box-shadow:0 2px 5px rgba(0,0,0,0.1);}
+    .campo{margin-bottom:15px;}
+    label{display:block;font-weight:bold;margin-bottom:5px;}
+    input,select,textarea{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;}
+    button{padding:12px 20px;background:#006633;color:white;border:none;border-radius:5px;cursor:pointer;font-size:16px;}
+    .erro{color:#c00;margin-top:10px;}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>➕ Novo Certificado</h2>
+    <button onclick="window.location.href='/dashboard'">Voltar</button>
+  </div>
+  <div class="container">
+    <div class="card">
+      <form id="formCert">
+        <h3>Dados do Paciente</h3>
+        <div class="campo">
+          <label>Nome Completo *</label>
+          <input type="text" id="nomePaciente" required>
+        </div>
+        <div class="campo">
+          <label>Gênero</label>
+          <select id="genero">
+            <option value="">Selecione</option>
+            <option value="M">Masculino</option>
+            <option value="F">Feminino</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Data Nascimento</label>
+          <input type="date" id="dataNascimento">
+        </div>
+        <div class="campo">
+          <label>BI</label>
+          <input type="text" id="bi">
+        </div>
+        <h3>Tipo de Certificado</h3>
+        <div class="campo">
+          <select id="tipo">
+            <option value="1">Genótipo</option>
+            <option value="2">Boa Saúde</option>
+            <option value="3">Incapacidade</option>
+            <option value="4">Aptidão</option>
+            <option value="5">Saúde Materna</option>
+            <option value="6">Pré-Natal</option>
+            <option value="7">Epidemiológico</option>
+            <option value="8">CSD</option>
+          </select>
+        </div>
+        <h3>Resultados (opcional)</h3>
+        <div id="camposResultados"></div>
+        <div class="campo">
+          <button type="submit">Emitir Certificado</button>
+        </div>
+        <div id="erro" class="erro"></div>
+      </form>
+    </div>
+  </div>
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/';
+
+    // Campos padrão para qualquer tipo (simplificado)
+    const camposHtml = \`
+      <div class="campo">
+        <label>Resultado 1</label>
+        <input type="text" name="campo1" placeholder="Digite um valor">
+      </div>
+      <div class="campo">
+        <label>Resultado 2</label>
+        <input type="text" name="campo2" placeholder="Digite um valor">
+      </div>
+    \`;
+    document.getElementById('camposResultados').innerHTML = camposHtml;
+
+    document.getElementById('formCert').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const dados = {
+        tipo: parseInt(document.getElementById('tipo').value),
+        paciente: {
+          nomeCompleto: document.getElementById('nomePaciente').value,
+          genero: document.getElementById('genero').value,
+          dataNascimento: document.getElementById('dataNascimento').value,
+          bi: document.getElementById('bi').value
+        },
+        laborantin: { nome: 'Laborantin' },
+        dados: {
+          campo1: document.querySelector('[name="campo1"]').value,
+          campo2: document.querySelector('[name="campo2"]').value
+        }
+      };
+      try {
+        const r = await fetch('/api/laboratorio/certificados', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': token },
+          body: JSON.stringify(dados)
+        });
+        const data = await r.json();
+        if (r.ok) {
+          alert('Certificado emitido: ' + data.numero);
+          window.location.href = '/dashboard';
+        } else {
+          document.getElementById('erro').innerText = data.erro || 'Erro';
+        }
+      } catch (e) {
+        document.getElementById('erro').innerText = 'Erro de ligação';
+      }
+    });
+  </script>
+</body>
+</html>
+  `);
 });
 
 // ============================================
@@ -132,7 +388,7 @@ app.post('/api/laboratorio/login', async (req, res) => {
 });
 
 // ============================================
-// Rotas Protegidas
+// Rotas Protegidas (com authLaboratorio)
 // ============================================
 app.get('/api/laboratorio/me', authLaboratorio, (req, res) => {
   res.json(req.lab);
