@@ -1,4 +1,4 @@
-// server.js - Version complète avec correction du numéro de certificat
+// server.js - Version avec correction robuste du numéro de certificat
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -58,6 +58,7 @@ establishmentSchema.virtual('status').get(function() {
 
 const Establishment = mongoose.model('Establishment', establishmentSchema);
 
+// Modèle Certificate (sans hook pre-save)
 const certificateSchema = new mongoose.Schema({
   establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true, index: true },
   createdBy: { type: String },
@@ -77,12 +78,9 @@ const certificateSchema = new mongoose.Schema({
 certificateSchema.index({ createdAt: -1 });
 certificateSchema.index({ patientName: 'text' });
 
-// Removemos o pre-save que gerava número baseado em countDocuments, pois usaremos contador atômico
-// certificateSchema.pre('save', ...)  // NÃO USAR
-
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
-// Modelo para contador sequencial
+// Modèle pour compteur séquentiel
 const counterSchema = new mongoose.Schema({
   _id: { type: String, required: true },
   seq: { type: Number, default: 0 }
@@ -91,11 +89,13 @@ const Counter = mongoose.model('Counter', counterSchema);
 
 // ========== Utilitaires ==========
 async function gerarNumeroCertificado() {
+  // Trouve ou crée le compteur avec _id = 'certificado' et incrémente
   const counter = await Counter.findByIdAndUpdate(
     'certificado',
     { $inc: { seq: 1 } },
     { new: true, upsert: true }
   );
+  if (!counter) throw new Error('Falha ao gerar número de certificado');
   const ano = new Date().getFullYear();
   const mes = (new Date().getMonth() + 1).toString().padStart(2, '0');
   return `CERT-${ano}${mes}-${counter.seq.toString().padStart(6, '0')}`;
@@ -655,7 +655,7 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
       return res.status(400).json({ erro: 'Campos obrigatórios' });
     }
 
-    const numero = await gerarNumeroCertificado();  // ← AGORA COM AWAIT
+    const numero = await gerarNumeroCertificado(); // Agora com await
     const idade = paciente.dataNascimento ? calcularIdade(paciente.dataNascimento) : null;
     let imc = null, classificacaoIMC = null;
     if (dados && dados.peso && dados.altura) {
@@ -686,6 +686,32 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
     res.json({ success: true, numero, idade, imc, classificacaoIMC });
   } catch (error) {
     console.error('Erro criação:', error);
+    // Se for erro de duplicação (código 11000), tenta novamente uma vez
+    if (error.code === 11000) {
+      try {
+        const novoNumero = await gerarNumeroCertificado();
+        const certificate = new Certificate({
+          establishmentId: req.lab._id,
+          createdBy: req.body.laborantin.nome,
+          certificateNumber: novoNumero,
+          patientName: req.body.paciente.nomeCompleto,
+          patientId: req.body.paciente.bi || null,
+          patientBirthDate: req.body.paciente.dataNascimento ? new Date(req.body.paciente.dataNascimento) : null,
+          diseaseCategory: `Tipo ${req.body.tipo}`,
+          diagnosis: 'Diversos',
+          testResults: req.body.dados,
+          idadeCalculada: req.body.paciente.dataNascimento ? calcularIdade(req.body.paciente.dataNascimento) : null,
+          imcCalculado: (req.body.dados && req.body.dados.peso && req.body.dados.altura) ? calcularIMC(req.body.dados.peso, req.body.dados.altura).imc : null,
+          classificacaoIMC: (req.body.dados && req.body.dados.peso && req.body.dados.altura) ? calcularIMC(req.body.dados.peso, req.body.dados.altura).classificacao : null
+        });
+        await certificate.save();
+        req.lab.totalEmissoes++;
+        await req.lab.save();
+        return res.json({ success: true, numero: novoNumero, idade: certificate.idadeCalculada, imc: certificate.imcCalculado, classificacaoIMC: certificate.classificacaoIMC });
+      } catch (err2) {
+        return res.status(500).json({ erro: 'Erro ao gerar número único' });
+      }
+    }
     res.status(500).json({ erro: error.message });
   }
 });
