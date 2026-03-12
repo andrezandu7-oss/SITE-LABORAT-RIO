@@ -1,4 +1,4 @@
-// server.js - Versão final com QR centralizado e campos "não solicitado" e título "ESTABELECIMENTO"
+// server.js - Versão final com ESTABELECIMENTO em destaque e QR centralizado
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -666,7 +666,6 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
     let certificado;
     let tentativas = 0;
     const maxTentativas = 5;
-    let erroDuplicado = null;
 
     while (tentativas < maxTentativas) {
       try {
@@ -690,7 +689,6 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
       } catch (err) {
         if (err.code === 11000) {
           tentativas++;
-          erroDuplicado = err;
           if (tentativas >= maxTentativas) {
             throw new Error('Número de certificado duplicado após várias tentativas.');
           }
