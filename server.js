@@ -1,4 +1,4 @@
-// server.js - Versão final com QR centralizado e campos "não solicitado"
+// server.js - Versão final com todos os campos dos exames exibidos, mesmo não solicitados
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -81,6 +81,22 @@ certificateSchema.index({ patientName: 'text' });
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
 // ========== Utilitaires ==========
+// Lista de campos por tipo (mesma do frontend)
+const camposPorTipo = {
+  1: ['grupoSanguineo','fatorRh','genotipo','hemoglobina','hematocrito','contagem_reticulocitos','eletroforese'],
+  2: ['peso','altura','pressaoArterial','frequenciaCardiaca','frequenciaRespiratoria','temperatura','saturacaoOxigenio','glicemia','colesterolTotal','triglicerideos'],
+  3: ['tipoIncapacidade','causa','grau','dataInicio','partesAfetadas','limitacoes','necessitaAcompanhante'],
+  4: ['tipoAptidao','modalidade','resultado','restricoes','validade'],
+  5: ['gestacoes','partos','abortos','nascidosVivos','dum','dpp','idadeGestacional','consultasCPN','hemograma','gotaEspessa','hiv','vdrl','hbs','glicemia','creatinina','ureia','tgo','grupoSanguineo','fatorRh','exsudadoVaginal','pesoAtual','alturaUterina','batimentosCardiacosFeto','movimentosFetais','edema','proteinuria'],
+  6: ['grupoSanguineo','fatorRh','hemograma','gotaEspessa','hiv','vdrl','hbs','vidal','glicemia','creatinina','ureia','tgo','testeGravidez','exsudadoVaginal','vs','falsiformacao'],
+  7: ['doenca','outraDoenca','dataInicioSintomas','dataDiagnostico','metodoDiagnostico','tipoExame','resultado','tratamento','internamento','dataInternamento','contatos'],
+  8: ['destino','motivoViagem','dataPartida','dataRetorno','vacinaFebreAmarela','dataVacinaFebreAmarela','loteVacinaFebreAmarela','vacinaCovid19','dosesCovid','testeCovid','tipoTesteCovid','dataTesteCovid','resultadoTesteCovid','outrasVacinas','medicamentos','condicoesEspeciais','recomendacoes']
+};
+
+function formatarNomeCampo(chave) {
+  return chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+}
+
 function gerarNumeroCertificado(labId) {
   const agora = new Date();
   const ano = agora.getFullYear();
@@ -743,24 +759,24 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     if (certificate.patientBirthDate) { doc.text(`Nascimento: ${new Date(certificate.patientBirthDate).toLocaleDateString('pt-PT')}`, 70, y); y += 15; }
     if (certificate.idadeCalculada) { doc.text(`Idade: ${certificate.idadeCalculada} anos`, 70, y); y += 15; }
 
-    // Resultados com "não solicitado"
-    if (certificate.testResults && Object.keys(certificate.testResults).length > 0) {
-      doc.fillColor('#006633').text('RESULTADOS:', 50, y);
+    // Extrair o tipo do certificado (número inteiro) da diseaseCategory
+    const tipoMatch = certificate.diseaseCategory.match(/\d+/);
+    const tipo = tipoMatch ? parseInt(tipoMatch[0]) : 1; // fallback para 1
+
+    // Obter lista de campos para este tipo
+    const campos = camposPorTipo[tipo] || [];
+    if (campos.length > 0) {
+      doc.fillColor('#006633').text('RESULTADOS DOS EXAMES:', 50, y);
       y += 20;
       doc.fillColor('#000').fontSize(10);
-      for (let [chave, valor] of Object.entries(certificate.testResults)) {
-        const chaveFormatada = chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
-        if (valor && valor.toString().trim() !== '') {
-          doc.text(`${chaveFormatada}: ${valor}`, 70, y);
-        } else {
-          doc.text(`${chaveFormatada}: (não solicitado)`, 70, y);
-        }
+      campos.forEach(campo => {
+        const valor = certificate.testResults ? certificate.testResults[campo] : null;
+        const valorExibido = (valor && valor.toString().trim() !== '') ? valor : '(não solicitado)';
+        const nomeFormatado = formatarNomeCampo(campo);
+        doc.text(`${nomeFormatado}: ${valorExibido}`, 70, y);
         y += 15;
         if (y > 700) { doc.addPage(); y = 50; }
-      }
-    } else {
-      doc.fillColor('#006633').text('RESULTADOS: (nenhum exame realizado)', 50, y);
-      y += 20;
+      });
     }
 
     if (certificate.imcCalculado) {
