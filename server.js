@@ -1,4 +1,4 @@
-// server.js - Versão final com contador atômico para números de certificado
+// server.js - Versão com ID do laboratório integrado ao número do certificado
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -58,7 +58,7 @@ establishmentSchema.virtual('status').get(function() {
 
 const Establishment = mongoose.model('Establishment', establishmentSchema);
 
-// Modèle Certificate (sans hook pre-save)
+// Schema Certificate (sans hook pre-save)
 const certificateSchema = new mongoose.Schema({
   establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true, index: true },
   createdBy: { type: String },
@@ -80,28 +80,26 @@ certificateSchema.index({ patientName: 'text' });
 
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
-// Modèle pour compteur séquentiel
-const counterSchema = new mongoose.Schema({
-  _id: { type: String, required: true },
-  seq: { type: Number, default: 0 }
-});
-const Counter = mongoose.model('Counter', counterSchema);
-
 // ========== Utilitaires ==========
-async function getNextSequence(name) {
-  const result = await Counter.findByIdAndUpdate(
-    name,
-    { $inc: { seq: 1 } },
-    { new: true, upsert: true }
-  );
-  return result.seq;
-}
-
-async function gerarNumeroCertificado() {
-  const ano = new Date().getFullYear();
-  const mes = (new Date().getMonth() + 1).toString().padStart(2, '0');
-  const seq = await getNextSequence('certificado');
-  return `CERT-${ano}${mes}-${seq.toString().padStart(6, '0')}`;
+// Génère un numéro de certificat ultra-robuste avec ID du laboratoire
+function gerarNumeroCertificado(labId) {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = (agora.getMonth() + 1).toString().padStart(2, '0');
+  const dia = agora.getDate().toString().padStart(2, '0');
+  const hora = agora.getHours().toString().padStart(2, '0');
+  const min = agora.getMinutes().toString().padStart(2, '0');
+  const seg = agora.getSeconds().toString().padStart(2, '0');
+  const ms = agora.getMilliseconds().toString().padStart(3, '0');
+  
+  // Extrait une partie unique de l'ID du laboratoire (les 4 derniers caractères hex)
+  const labPart = labId.toString().slice(-4).toUpperCase();
+  
+  // 6 bytes aléatoires => 12 caractères hex (sécurité renforcée)
+  const random = crypto.randomBytes(6).toString('hex').toUpperCase();
+  
+  // Format: CERT-AAAAMMJJ-LABPART-HHMMSSmmm-RANDOM
+  return `CERT-${ano}${mes}${dia}-${labPart}-${hora}${min}${seg}${ms}-${random}`;
 }
 
 function calcularIdade(dataNascimento) {
@@ -658,8 +656,8 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
       return res.status(400).json({ erro: 'Campos obrigatórios' });
     }
 
-    // Geração de número sequencial atômico
-    const numero = await gerarNumeroCertificado();
+    // Geração do número com ID do laboratório (proposição 3)
+    const numero = gerarNumeroCertificado(req.lab._id);
     const idade = paciente.dataNascimento ? calcularIdade(paciente.dataNascimento) : null;
     let imc = null, classificacaoIMC = null;
     if (dados && dados.peso && dados.altura) {
@@ -690,8 +688,11 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
     res.json({ success: true, numero, idade, imc, classificacaoIMC });
   } catch (error) {
     console.error('Erro criação:', error);
-    // Se houver erro (improvável com contador), retorna mensagem clara
-    res.status(500).json({ erro: 'Erro ao gerar certificado: ' + error.message });
+    // Caso extremamente raro de duplicação (quase impossível), retorna mensagem amigável
+    if (error.code === 11000) {
+      return res.status(409).json({ erro: 'Número de certificado duplicado. Por favor, tente novamente.' });
+    }
+    res.status(500).json({ erro: 'Erro interno: ' + error.message });
   }
 });
 
