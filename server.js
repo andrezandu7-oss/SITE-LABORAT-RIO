@@ -1,4 +1,4 @@
-// server.js - Versão simplificada com número aleatório (sem contador)
+// server.js - Versão final com contador atômico para números de certificado
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -58,7 +58,7 @@ establishmentSchema.virtual('status').get(function() {
 
 const Establishment = mongoose.model('Establishment', establishmentSchema);
 
-// Schema Certificate (sans hook pre-save)
+// Modèle Certificate (sans hook pre-save)
 const certificateSchema = new mongoose.Schema({
   establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true, index: true },
   createdBy: { type: String },
@@ -80,13 +80,28 @@ certificateSchema.index({ patientName: 'text' });
 
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
+// Modèle pour compteur séquentiel
+const counterSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  seq: { type: Number, default: 0 }
+});
+const Counter = mongoose.model('Counter', counterSchema);
+
 // ========== Utilitaires ==========
-// Gère un numéro de certificat unique basé sur date + random (pas de compteur)
-function gerarNumeroCertificado() {
+async function getNextSequence(name) {
+  const result = await Counter.findByIdAndUpdate(
+    name,
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  return result.seq;
+}
+
+async function gerarNumeroCertificado() {
   const ano = new Date().getFullYear();
   const mes = (new Date().getMonth() + 1).toString().padStart(2, '0');
-  const random = crypto.randomBytes(4).toString('hex').toUpperCase();
-  return `CERT-${ano}${mes}-${random}`;
+  const seq = await getNextSequence('certificado');
+  return `CERT-${ano}${mes}-${seq.toString().padStart(6, '0')}`;
 }
 
 function calcularIdade(dataNascimento) {
@@ -643,8 +658,8 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
       return res.status(400).json({ erro: 'Campos obrigatórios' });
     }
 
-    // Geração de número aleatório (sem contador)
-    const numero = gerarNumeroCertificado();
+    // Geração de número sequencial atômico
+    const numero = await gerarNumeroCertificado();
     const idade = paciente.dataNascimento ? calcularIdade(paciente.dataNascimento) : null;
     let imc = null, classificacaoIMC = null;
     if (dados && dados.peso && dados.altura) {
@@ -675,33 +690,8 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
     res.json({ success: true, numero, idade, imc, classificacaoIMC });
   } catch (error) {
     console.error('Erro criação:', error);
-    // Em caso de erro de duplicação (raro com random), podemos tentar novamente uma vez
-    if (error.code === 11000) {
-      try {
-        const novoNumero = gerarNumeroCertificado();
-        const certificate = new Certificate({
-          establishmentId: req.lab._id,
-          createdBy: req.body.laborantin.nome,
-          certificateNumber: novoNumero,
-          patientName: req.body.paciente.nomeCompleto,
-          patientId: req.body.paciente.bi || null,
-          patientBirthDate: req.body.paciente.dataNascimento ? new Date(req.body.paciente.dataNascimento) : null,
-          diseaseCategory: `Tipo ${req.body.tipo}`,
-          diagnosis: 'Diversos',
-          testResults: req.body.dados,
-          idadeCalculada: req.body.paciente.dataNascimento ? calcularIdade(req.body.paciente.dataNascimento) : null,
-          imcCalculado: (req.body.dados && req.body.dados.peso && req.body.dados.altura) ? calcularIMC(req.body.dados.peso, req.body.dados.altura).imc : null,
-          classificacaoIMC: (req.body.dados && req.body.dados.peso && req.body.dados.altura) ? calcularIMC(req.body.dados.peso, req.body.dados.altura).classificacao : null
-        });
-        await certificate.save();
-        req.lab.totalEmissoes++;
-        await req.lab.save();
-        return res.json({ success: true, numero: novoNumero, idade: certificate.idadeCalculada, imc: certificate.imcCalculado, classificacaoIMC: certificate.classificacaoIMC });
-      } catch (err2) {
-        return res.status(500).json({ erro: 'Erro ao gerar número único após tentativa' });
-      }
-    }
-    res.status(500).json({ erro: error.message });
+    // Se houver erro (improvável com contador), retorna mensagem clara
+    res.status(500).json({ erro: 'Erro ao gerar certificado: ' + error.message });
   }
 });
 
