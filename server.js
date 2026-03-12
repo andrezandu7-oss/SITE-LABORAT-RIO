@@ -1,4 +1,4 @@
-// server.js - Versão com ID do laboratório integrado ao número do certificado
+// server.js - Versão final com QR centralizado e campos "não solicitado"
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -58,7 +58,7 @@ establishmentSchema.virtual('status').get(function() {
 
 const Establishment = mongoose.model('Establishment', establishmentSchema);
 
-// Schema Certificate (sans hook pre-save)
+// Schema Certificate – SEM hook pre-save
 const certificateSchema = new mongoose.Schema({
   establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true, index: true },
   createdBy: { type: String },
@@ -81,7 +81,6 @@ certificateSchema.index({ patientName: 'text' });
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
 // ========== Utilitaires ==========
-// Génère un numéro de certificat ultra-robuste avec ID du laboratoire
 function gerarNumeroCertificado(labId) {
   const agora = new Date();
   const ano = agora.getFullYear();
@@ -91,14 +90,8 @@ function gerarNumeroCertificado(labId) {
   const min = agora.getMinutes().toString().padStart(2, '0');
   const seg = agora.getSeconds().toString().padStart(2, '0');
   const ms = agora.getMilliseconds().toString().padStart(3, '0');
-  
-  // Extrait une partie unique de l'ID du laboratoire (les 4 derniers caractères hex)
   const labPart = labId.toString().slice(-4).toUpperCase();
-  
-  // 6 bytes aléatoires => 12 caractères hex (sécurité renforcée)
   const random = crypto.randomBytes(6).toString('hex').toUpperCase();
-  
-  // Format: CERT-AAAAMMJJ-LABPART-HHMMSSmmm-RANDOM
   return `CERT-${ano}${mes}${dia}-${labPart}-${hora}${min}${seg}${ms}-${random}`;
 }
 
@@ -143,7 +136,7 @@ const authJWT = async (req, res, next) => {
   }
 };
 
-// ========== Routes HTML ==========
+// ========== Rotas HTML ==========
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -305,7 +298,6 @@ carregarStats();
   `);
 });
 
-// ========== ROTA /novo-certificado COM SELETORES DE DATA ==========
 app.get('/novo-certificado', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -444,9 +436,7 @@ const opcoesSelect = {
   'testeCovid': ['Sim','Não']
 };
 
-function formatarNomeCampo(chave) {
-  return chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
-}
+function formatarNomeCampo(chave) { return chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()); }
 
 // Função para obter número de dias em um mês/ano
 function getDiasNoMes(mes, ano) {
@@ -656,40 +646,52 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
       return res.status(400).json({ erro: 'Campos obrigatórios' });
     }
 
-    // Geração do número com ID do laboratório (proposição 3)
-    const numero = gerarNumeroCertificado(req.lab._id);
-    const idade = paciente.dataNascimento ? calcularIdade(paciente.dataNascimento) : null;
-    let imc = null, classificacaoIMC = null;
-    if (dados && dados.peso && dados.altura) {
-      const calc = calcularIMC(dados.peso, dados.altura);
-      imc = calc.imc;
-      classificacaoIMC = calc.classificacao;
-    }
+    let numero;
+    let certificado;
+    let tentativas = 0;
+    const maxTentativas = 5;
+    let erroDuplicado = null;
 
-    const certificate = new Certificate({
-      establishmentId: req.lab._id,
-      createdBy: laborantin.nome,
-      certificateNumber: numero,
-      patientName: paciente.nomeCompleto,
-      patientId: paciente.bi || null,
-      patientBirthDate: paciente.dataNascimento ? new Date(paciente.dataNascimento) : null,
-      diseaseCategory: `Tipo ${tipo}`,
-      diagnosis: 'Diversos',
-      testResults: dados,
-      idadeCalculada: idade,
-      imcCalculado: imc,
-      classificacaoIMC: classificacaoIMC
-    });
-    await certificate.save();
+    while (tentativas < maxTentativas) {
+      try {
+        numero = gerarNumeroCertificado(req.lab._id);
+        certificado = new Certificate({
+          establishmentId: req.lab._id,
+          createdBy: laborantin.nome,
+          certificateNumber: numero,
+          patientName: paciente.nomeCompleto,
+          patientId: paciente.bi || null,
+          patientBirthDate: paciente.dataNascimento ? new Date(paciente.dataNascimento) : null,
+          diseaseCategory: `Tipo ${tipo}`,
+          diagnosis: 'Diversos',
+          testResults: dados,
+          idadeCalculada: paciente.dataNascimento ? calcularIdade(paciente.dataNascimento) : null,
+          imcCalculado: (dados && dados.peso && dados.altura) ? calcularIMC(dados.peso, dados.altura).imc : null,
+          classificacaoIMC: (dados && dados.peso && dados.altura) ? calcularIMC(dados.peso, dados.altura).classificacao : null
+        });
+        await certificado.save();
+        break; // Sucesso
+      } catch (err) {
+        if (err.code === 11000) {
+          tentativas++;
+          erroDuplicado = err;
+          if (tentativas >= maxTentativas) {
+            throw new Error('Número de certificado duplicado após várias tentativas.');
+          }
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } else {
+          throw err;
+        }
+      }
+    }
 
     req.lab.totalEmissoes = (req.lab.totalEmissoes || 0) + 1;
     await req.lab.save();
 
-    res.json({ success: true, numero, idade, imc, classificacaoIMC });
+    res.json({ success: true, numero, idade: certificado.idadeCalculada, imc: certificado.imcCalculado, classificacaoIMC: certificado.classificacaoIMC });
   } catch (error) {
     console.error('Erro criação:', error);
-    // Caso extremamente raro de duplicação (quase impossível), retorna mensagem amigável
-    if (error.code === 11000) {
+    if (error.message.includes('duplicado')) {
       return res.status(409).json({ erro: 'Número de certificado duplicado. Por favor, tente novamente.' });
     }
     res.status(500).json({ erro: 'Erro interno: ' + error.message });
@@ -741,16 +743,24 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     if (certificate.patientBirthDate) { doc.text(`Nascimento: ${new Date(certificate.patientBirthDate).toLocaleDateString('pt-PT')}`, 70, y); y += 15; }
     if (certificate.idadeCalculada) { doc.text(`Idade: ${certificate.idadeCalculada} anos`, 70, y); y += 15; }
 
+    // Resultados com "não solicitado"
     if (certificate.testResults && Object.keys(certificate.testResults).length > 0) {
       doc.fillColor('#006633').text('RESULTADOS:', 50, y);
       y += 20;
       doc.fillColor('#000').fontSize(10);
       for (let [chave, valor] of Object.entries(certificate.testResults)) {
         const chaveFormatada = chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
-        doc.text(`${chaveFormatada}: ${valor}`, 70, y);
+        if (valor && valor.toString().trim() !== '') {
+          doc.text(`${chaveFormatada}: ${valor}`, 70, y);
+        } else {
+          doc.text(`${chaveFormatada}: (não solicitado)`, 70, y);
+        }
         y += 15;
         if (y > 700) { doc.addPage(); y = 50; }
       }
+    } else {
+      doc.fillColor('#006633').text('RESULTADOS: (nenhum exame realizado)', 50, y);
+      y += 20;
     }
 
     if (certificate.imcCalculado) {
@@ -760,17 +770,25 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
       y += 25;
     }
 
-    try {
-      const qrData = `${certificate.certificateNumber}|${lab.name}|${certificate.patientName}`;
-      const qrBuffer = await QRCode.toBuffer(qrData, { width: 100 });
-      doc.image(qrBuffer, 450, 650, { width: 100 });
-    } catch (qrError) { console.error('Erro QR:', qrError); }
-
+    // Linhas de assinatura
     doc.lineWidth(1).moveTo(70, y).lineTo(270, y).stroke();
     doc.fontSize(10).text('Assinatura do Laborantin', 70, y + 5).text(certificate.createdBy || '______', 70, y + 20);
     doc.lineWidth(1).moveTo(350, y).lineTo(550, y).stroke();
     doc.fontSize(10).text('Assinatura do Diretor', 350, y + 5).text(lab.director || '______', 350, y + 20);
+    y += 50;
 
+    // QR Code centralizado
+    try {
+      const qrData = `${certificate.certificateNumber}|${lab.name}|${certificate.patientName}`;
+      const qrBuffer = await QRCode.toBuffer(qrData, { width: 100 });
+      const pageWidth = doc.page.width; // 595
+      const qrWidth = 100;
+      const qrX = (pageWidth - qrWidth) / 2;
+      doc.image(qrBuffer, qrX, y, { width: qrWidth });
+      y += 110;
+    } catch (qrError) { console.error('Erro QR:', qrError); }
+
+    // Rodapé
     doc.fontSize(8).fillColor('#666').text('Documento válido em todo território nacional', 0, 780, { align: 'center' });
     doc.end();
   } catch (error) {
