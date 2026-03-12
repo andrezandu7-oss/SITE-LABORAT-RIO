@@ -1,4 +1,4 @@
-// server.js - Versão completa com correção do número de certificado e rotas HTML integradas
+// server.js corrigé avec authentification JWT cohérente
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -77,26 +77,25 @@ const certificateSchema = new mongoose.Schema({
 certificateSchema.index({ createdAt: -1 });
 certificateSchema.index({ patientName: 'text' });
 
-// NÃO use hook pre-save aqui – o número é gerado na rota
+certificateSchema.pre('save', async function(next) {
+  if (!this.certificateNumber) {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const count = await mongoose.model('Certificate').countDocuments();
+    this.certificateNumber = `CERT-${year}${month}-${(count + 1).toString().padStart(6, '0')}`;
+  }
+  next();
+});
 
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
 // ========== Utilitaires ==========
-// Gera número com ID do laboratório (proposição 3)
-function gerarNumeroCertificado(labId) {
-  const agora = new Date();
-  const ano = agora.getFullYear();
-  const mes = (agora.getMonth() + 1).toString().padStart(2, '0');
-  const dia = agora.getDate().toString().padStart(2, '0');
-  const hora = agora.getHours().toString().padStart(2, '0');
-  const min = agora.getMinutes().toString().padStart(2, '0');
-  const seg = agora.getSeconds().toString().padStart(2, '0');
-  const ms = agora.getMilliseconds().toString().padStart(3, '0');
-  
-  const labPart = labId.toString().slice(-4).toUpperCase();
-  const random = crypto.randomBytes(6).toString('hex').toUpperCase();
-  
-  return `CERT-${ano}${mes}${dia}-${labPart}-${hora}${min}${seg}${ms}-${random}`;
+function gerarNumeroCertificado() {
+  const ano = new Date().getFullYear();
+  const mes = (new Date().getMonth() + 1).toString().padStart(2, '0');
+  const random = crypto.randomBytes(4).toString('hex').toUpperCase();
+  return `CERT-${ano}${mes}-${random}`;
 }
 
 function calcularIdade(dataNascimento) {
@@ -122,7 +121,7 @@ function calcularIMC(peso, altura) {
   return { imc: imc.toFixed(2), classificacao };
 }
 
-// ========== Middleware JWT ==========
+// ========== Middleware JWT (remplace authLaboratorio) ==========
 const authJWT = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -140,7 +139,7 @@ const authJWT = async (req, res, next) => {
   }
 };
 
-// ========== Rotas HTML (integradas) ==========
+// ========== Routes HTML ==========
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -329,8 +328,6 @@ app.get('/novo-certificado', (req, res) => {
     .info-message { background:#e0f0e5; padding:1rem; border-radius:8px; }
     #modalPreview { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; justify-content:center; align-items:center; }
     .modal-content { background:white; padding:2rem; border-radius:24px; max-width:600px; }
-    .data-container { display:flex; gap:5px; }
-    .data-container select, .data-container input { flex:1; }
   </style>
 </head>
 <body>
@@ -339,7 +336,6 @@ app.get('/novo-certificado', (req, res) => {
   <div class="form-card">
     <div id="loadingMessage" class="info-message">A validar...</div>
     <form id="certForm" style="display:none;">
-      <!-- Tipo de certificado (sempre no topo) -->
       <div>
         <label for="tipo">TIPO DE CERTIFICADO *</label>
         <select id="tipo" required>
@@ -349,58 +345,26 @@ app.get('/novo-certificado', (req, res) => {
           <option value="7">7 - EPIDEMIOLÓGICO</option><option value="8">8 - CSD</option>
         </select>
       </div>
-
-      <!-- Dados do paciente -->
       <div class="section-title">👤 Dados do paciente</div>
       <div class="grid-2">
         <div class="full-width campo"><label>Nome completo *</label><input type="text" id="nomeCompleto" required></div>
         <div class="campo"><label>BI</label><input type="text" id="bi"></div>
-        <div class="campo"><label>Género</label><select id="genero"><option value="M">Masculino</option><option value="F" selected>Feminino</option></select></div>
-        <div class="full-width campo"><label>Data de Nascimento *</label>
-          <div class="data-container">
-            <select id="dia" required>
-              <option value="">Dia</option>
-            </select>
-            <select id="mes" required>
-              <option value="">Mês</option>
-              <option value="1">Janeiro</option>
-              <option value="2">Fevereiro</option>
-              <option value="3">Março</option>
-              <option value="4">Abril</option>
-              <option value="5">Maio</option>
-              <option value="6">Junho</option>
-              <option value="7">Julho</option>
-              <option value="8">Agosto</option>
-              <option value="9">Setembro</option>
-              <option value="10">Outubro</option>
-              <option value="11">Novembro</option>
-              <option value="12">Dezembro</option>
-            </select>
-            <input type="number" id="ano" placeholder="Ano" min="1900" max="2100" required>
-          </div>
-        </div>
+        <div class="campo"><label>Nascimento *</label><input type="date" id="dataNascimento" required></div>
+        <div class="campo"><label>Género</label><select id="genero"><option value="M">M</option><option value="F" selected>F</option></select></div>
         <div class="full-width campo"><label>Telefone</label><input type="tel" id="telefone"></div>
       </div>
-
-      <!-- Parâmetros específicos (campos dinâmicos) -->
-      <div class="section-title">📋 Parâmetros específicos</div>
-      <div class="campos-dinamicos" id="camposEspecificosContainer">
-        <p class="info-message">👆 Selecione um tipo para ver os campos.</p>
-      </div>
-
-      <!-- Responsável pela emissão (agora no final) -->
-      <div class="section-title">🔬 Responsável pela emissão</div>
+      <div class="section-title">🔬 Responsável</div>
       <div class="grid-2">
-        <div class="full-width campo"><label>Nome do laborantin / técnico *</label><input type="text" id="laborantinNome" required></div>
-        <div class="campo"><label>Registro profissional</label><input type="text" id="laborantinRegistro"></div>
+        <div class="full-width campo"><label>Nome *</label><input type="text" id="laborantinNome" required></div>
+        <div class="campo"><label>Registro</label><input type="text" id="laborantinRegistro"></div>
       </div>
-
+      <div class="section-title">📋 Parâmetros específicos</div>
+      <div class="campos-dinamicos" id="camposEspecificosContainer"><p class="info-message">👆 Selecione um tipo para ver os campos.</p></div>
       <button type="submit" class="btn-emitir" id="btnEmitir">📥 Emitir certificado</button>
     </form>
     <div id="resultadoArea" class="hidden" style="display:none;"></div>
   </div>
 </div>
-
 <div id="modalPreview">
   <div class="modal-content">
     <h2 style="color:#006633;">🔍 Confirmar Dados</h2>
@@ -411,9 +375,7 @@ app.get('/novo-certificado', (req, res) => {
     </div>
   </div>
 </div>
-
 <script>
-// Lista completa de exames por tipo (8 tipos)
 const examesPorTipo = {
   1: ['grupoSanguineo','fatorRh','genotipo','hemoglobina','hematocrito','contagem_reticulocitos','eletroforese'],
   2: ['peso','altura','pressaoArterial','frequenciaCardiaca','frequenciaRespiratoria','temperatura','saturacaoOxigenio','glicemia','colesterolTotal','triglicerideos'],
@@ -439,36 +401,7 @@ const opcoesSelect = {
   'vacinaCovid19': ['Sim','Não'],
   'testeCovid': ['Sim','Não']
 };
-
 function formatarNomeCampo(chave) { return chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()); }
-
-// Função para obter número de dias em um mês/ano
-function getDiasNoMes(mes, ano) {
-  return new Date(ano, mes, 0).getDate();
-}
-
-// Atualiza os dias conforme mês e ano
-function atualizarDias() {
-  const mes = parseInt(document.getElementById('mes').value);
-  const ano = parseInt(document.getElementById('ano').value);
-  const selectDia = document.getElementById('dia');
-  const diaAtual = selectDia.value;
-  selectDia.innerHTML = '<option value="">Dia</option>';
-  if (mes && ano) {
-    const dias = getDiasNoMes(mes, ano);
-    for (let i = 1; i <= dias; i++) {
-      const opt = document.createElement('option');
-      opt.value = i;
-      opt.textContent = i.toString().padStart(2, '0');
-      selectDia.appendChild(opt);
-    }
-    if (diaAtual && parseInt(diaAtual) <= dias) {
-      selectDia.value = diaAtual;
-    }
-  }
-}
-
-// Token e inicialização
 const token = localStorage.getItem('token');
 if (!token) {
   document.getElementById('loadingMessage').innerText = '❌ Sessão expirada';
@@ -477,17 +410,6 @@ if (!token) {
   document.getElementById('loadingMessage').style.display = 'none';
   document.getElementById('certForm').style.display = 'block';
 }
-
-// Eventos para data
-document.getElementById('mes').addEventListener('change', atualizarDias);
-document.getElementById('ano').addEventListener('input', atualizarDias);
-// Pré-definir ano atual e mês atual
-const hoje = new Date();
-document.getElementById('ano').value = hoje.getFullYear();
-document.getElementById('mes').value = hoje.getMonth() + 1;
-atualizarDias();
-
-// Campos dinâmicos conforme tipo selecionado
 document.getElementById('tipo').addEventListener('change', function() {
   const tipo = parseInt(this.value);
   const lista = examesPorTipo[tipo] || [];
@@ -508,8 +430,6 @@ document.getElementById('tipo').addEventListener('change', function() {
   html += '</div>';
   document.getElementById('camposEspecificosContainer').innerHTML = html;
 });
-
-// Pré-visualização
 document.getElementById('certForm').addEventListener('submit', function(e) {
   e.preventDefault();
   let html = '<div><strong>Paciente:</strong> ' + document.getElementById('nomeCompleto').value + '</div><div style="border-top:1px solid #eee; margin-top:1rem;">';
@@ -520,34 +440,18 @@ document.getElementById('certForm').addEventListener('submit', function(e) {
   document.getElementById('previewContent').innerHTML = html;
   document.getElementById('modalPreview').style.display = 'flex';
 });
-
 window.fecharPreview = () => { document.getElementById('modalPreview').style.display = 'none'; };
-
-// Confirmação e envio
 document.getElementById('btnConfirmarFinal').addEventListener('click', async function() {
   fecharPreview();
   document.getElementById('btnEmitir').disabled = true;
   document.getElementById('btnEmitir').textContent = '⏳ Emitindo...';
-
-  // Construir data de nascimento a partir dos campos
-  const dia = document.getElementById('dia').value;
-  const mes = document.getElementById('mes').value;
-  const ano = document.getElementById('ano').value;
-  if (!dia || !mes || !ano) {
-    alert('Preencha a data de nascimento completa.');
-    document.getElementById('btnEmitir').disabled = false;
-    document.getElementById('btnEmitir').textContent = '📥 Emitir certificado';
-    return;
-  }
-  const dataNascimento = ano + '-' + mes.padStart(2,'0') + '-' + dia.padStart(2,'0');
-
   const tipo = parseInt(document.getElementById('tipo').value);
   const payload = {
     tipo: tipo,
     paciente: {
       nomeCompleto: document.getElementById('nomeCompleto').value,
       bi: document.getElementById('bi').value,
-      dataNascimento: dataNascimento,
+      dataNascimento: document.getElementById('dataNascimento').value,
       genero: document.getElementById('genero').value,
       telefone: document.getElementById('telefone').value
     },
@@ -567,7 +471,6 @@ document.getElementById('btnConfirmarFinal').addEventListener('click', async fun
       }
     }
   });
-
   try {
     const r = await fetch('/api/laboratorio/certificados', {
       method: 'POST',
@@ -650,8 +553,7 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
       return res.status(400).json({ erro: 'Campos obrigatórios' });
     }
 
-    // Geração do número com ID do laboratório
-    const numero = gerarNumeroCertificado(req.lab._id);
+    const numero = gerarNumeroCertificado();
     const idade = paciente.dataNascimento ? calcularIdade(paciente.dataNascimento) : null;
     let imc = null, classificacaoIMC = null;
     if (dados && dados.peso && dados.altura) {
@@ -682,10 +584,7 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
     res.json({ success: true, numero, idade, imc, classificacaoIMC });
   } catch (error) {
     console.error('Erro criação:', error);
-    if (error.code === 11000) {
-      return res.status(409).json({ erro: 'Número de certificado duplicado. Por favor, tente novamente.' });
-    }
-    res.status(500).json({ erro: 'Erro interno: ' + error.message });
+    res.status(500).json({ erro: error.message });
   }
 });
 
