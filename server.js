@@ -1,4 +1,4 @@
-// server.js - Versão final com todos os campos dos exames exibidos, mesmo não solicitados
+// server.js - Versão final com QR centralizado e campos "não solicitado" e título "ESTABELECIMENTO"
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -737,10 +737,15 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
       .stroke();
     let y = 180;
 
-    doc.fontSize(14).text(lab.name, 50, y);
-    doc.fontSize(10).fillColor('#666').text(`NIF: ${lab.nif} | ${lab.province}`, 50, y + 20);
-    doc.text(`Endereço: ${lab.address} | Tel: ${lab.phone1}`, 50, y + 35);
-    y += 60;
+    // ESTABELECIMENTO (agora com título e posicionado após a linha)
+    doc.fillColor('#006633').fontSize(12).text('ESTABELECIMENTO:', 50, y);
+    y += 15;
+    doc.fontSize(14).text(lab.name, 70, y);
+    y += 20;
+    doc.fontSize(10).fillColor('#666').text(`NIF: ${lab.nif} | ${lab.province}`, 70, y);
+    y += 15;
+    doc.text(`Endereço: ${lab.address} | Tel: ${lab.phone1}`, 70, y);
+    y += 30;
 
     doc.fillColor('#006633').fontSize(12).text(`CERTIFICADO Nº: ${certificate.certificateNumber}`, 50, y);
     doc.fontSize(10).fillColor('#666').text(`Emissão: ${new Date(certificate.createdAt).toLocaleDateString('pt-PT')}`, 50, y + 15);
