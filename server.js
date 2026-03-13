@@ -1,4 +1,4 @@
-// server.js - Versão final com ESTABELECIMENTO em destaque e QR centralizado
+// server.js - Versão final com QR code específico para genótipo
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -58,12 +58,13 @@ establishmentSchema.virtual('status').get(function() {
 
 const Establishment = mongoose.model('Establishment', establishmentSchema);
 
-// Schema Certificate – SEM hook pre-save
+// Schema Certificate – com patientGender
 const certificateSchema = new mongoose.Schema({
   establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true, index: true },
   createdBy: { type: String },
   certificateNumber: { type: String, required: true, unique: true },
   patientName: { type: String, required: true },
+  patientGender: { type: String }, // 'M' ou 'F'
   patientId: { type: String },
   patientBirthDate: { type: Date },
   diseaseCategory: { type: String, required: true },
@@ -367,30 +368,8 @@ app.get('/novo-certificado', (req, res) => {
       <div class="grid-2">
         <div class="full-width campo"><label>Nome completo *</label><input type="text" id="nomeCompleto" required></div>
         <div class="campo"><label>BI</label><input type="text" id="bi"></div>
-        <div class="campo"><label>Género</label><select id="genero"><option value="M">Masculino</option><option value="F" selected>Feminino</option></select></div>
-        <div class="full-width campo"><label>Data de Nascimento *</label>
-          <div class="data-container">
-            <select id="dia" required>
-              <option value="">Dia</option>
-            </select>
-            <select id="mes" required>
-              <option value="">Mês</option>
-              <option value="1">Janeiro</option>
-              <option value="2">Fevereiro</option>
-              <option value="3">Março</option>
-              <option value="4">Abril</option>
-              <option value="5">Maio</option>
-              <option value="6">Junho</option>
-              <option value="7">Julho</option>
-              <option value="8">Agosto</option>
-              <option value="9">Setembro</option>
-              <option value="10">Outubro</option>
-              <option value="11">Novembro</option>
-              <option value="12">Dezembro</option>
-            </select>
-            <input type="number" id="ano" placeholder="Ano" min="1900" max="2100" required>
-          </div>
-        </div>
+        <div class="campo"><label>Nascimento *</label><input type="date" id="dataNascimento" required></div>
+        <div class="campo"><label>Género</label><select id="genero"><option value="M">M</option><option value="F" selected>F</option></select></div>
         <div class="full-width campo"><label>Telefone</label><input type="tel" id="telefone"></div>
       </div>
 
@@ -675,6 +654,7 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
           createdBy: laborantin.nome,
           certificateNumber: numero,
           patientName: paciente.nomeCompleto,
+          patientGender: paciente.genero, // <-- NOVO CAMPO
           patientId: paciente.bi || null,
           patientBirthDate: paciente.dataNascimento ? new Date(paciente.dataNascimento) : null,
           diseaseCategory: `Tipo ${tipo}`,
@@ -735,7 +715,7 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
       .stroke();
     let y = 180;
 
-    // ESTABELECIMENTO (agora com título e posicionado após a linha)
+    // ESTABELECIMENTO
     doc.fillColor('#006633').fontSize(12).text('ESTABELECIMENTO:', 50, y);
     y += 15;
     doc.fontSize(14).text(lab.name, 70, y);
@@ -764,7 +744,7 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
 
     // Extrair o tipo do certificado (número inteiro) da diseaseCategory
     const tipoMatch = certificate.diseaseCategory.match(/\d+/);
-    const tipo = tipoMatch ? parseInt(tipoMatch[0]) : 1; // fallback para 1
+    const tipo = tipoMatch ? parseInt(tipoMatch[0]) : 1;
 
     // Obter lista de campos para este tipo
     const campos = camposPorTipo[tipo] || [];
@@ -796,9 +776,24 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     doc.fontSize(10).text('Assinatura do Diretor', 350, y + 5).text(lab.director || '______', 350, y + 20);
     y += 50;
 
-    // QR Code centralizado
+    // QR Code centralizado – adaptado para tipo 1 (genótipo)
     try {
-      const qrData = `${certificate.certificateNumber}|${lab.name}|${certificate.patientName}`;
+      let qrData;
+      if (tipo === 1) {
+        // Formato para app de relacionamento: Prénom|Nom|Genre|Génotype|Groupe sanguin
+        const nameParts = certificate.patientName.split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+        const gender = certificate.patientGender || 'N/I';
+        const genotype = certificate.testResults?.genotipo || '';
+        const bloodGroup = certificate.testResults?.grupoSanguineo || '';
+        const bloodRh = certificate.testResults?.fatorRh || '';
+        // Concaténer groupe et Rh en enlevant les parenthèses éventuelles
+        const fullBlood = bloodGroup + (bloodRh ? bloodRh.replace(/[()]/g, '') : '');
+        qrData = `${firstName}|${lastName}|${gender}|${genotype}|${fullBlood}`;
+      } else {
+        qrData = `${certificate.certificateNumber}|${lab.name}|${certificate.patientName}`;
+      }
       const qrBuffer = await QRCode.toBuffer(qrData, { width: 100 });
       const pageWidth = doc.page.width; // 595
       const qrWidth = 100;
