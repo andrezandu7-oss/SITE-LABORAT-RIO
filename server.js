@@ -1,4 +1,4 @@
-// server.js - Versão final com QR code específico para genótipo
+// server.js - Versão final com QR code para genótipo contendo dados para app de relacionamento
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -58,7 +58,7 @@ establishmentSchema.virtual('status').get(function() {
 
 const Establishment = mongoose.model('Establishment', establishmentSchema);
 
-// Schema Certificate – com patientGender
+// Schema Certificate – avec patientGender
 const certificateSchema = new mongoose.Schema({
   establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true, index: true },
   createdBy: { type: String },
@@ -78,6 +78,8 @@ const certificateSchema = new mongoose.Schema({
 
 certificateSchema.index({ createdAt: -1 });
 certificateSchema.index({ patientName: 'text' });
+
+// NENHUM HOOK PRE-SAVE AQUI – O NÚMERO É GERADO EXCLUSIVAMENTE NA ROTA
 
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
@@ -153,7 +155,7 @@ const authJWT = async (req, res, next) => {
   }
 };
 
-// ========== Rotas HTML ==========
+// ========== Rotas HTML (embarquées) ==========
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -654,7 +656,7 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
           createdBy: laborantin.nome,
           certificateNumber: numero,
           patientName: paciente.nomeCompleto,
-          patientGender: paciente.genero, // <-- NOVO CAMPO
+          patientGender: paciente.genero, // novo campo
           patientId: paciente.bi || null,
           patientBirthDate: paciente.dataNascimento ? new Date(paciente.dataNascimento) : null,
           diseaseCategory: `Tipo ${tipo}`,
@@ -780,7 +782,7 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     try {
       let qrData;
       if (tipo === 1) {
-        // Formato para app de relacionamento: Prénom|Nom|Genre|Génotype|Groupe sanguin
+        // Formato para app de relacionamento: Prénom|Nom|Genre|Genotype|Groupe sanguin
         const nameParts = certificate.patientName.split(' ');
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
