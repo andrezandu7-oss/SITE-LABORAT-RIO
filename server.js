@@ -1,4 +1,4 @@
-// server.js - Versão final com ESTABELECIMENTO em destaque e QR centralizado
+// server.js - Versão final com QR específico para genótipo e remoção do quadro de parâmetros
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -58,12 +58,13 @@ establishmentSchema.virtual('status').get(function() {
 
 const Establishment = mongoose.model('Establishment', establishmentSchema);
 
-// Schema Certificate – SEM hook pre-save
+// Schema Certificate – com patientGender
 const certificateSchema = new mongoose.Schema({
   establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true, index: true },
   createdBy: { type: String },
   certificateNumber: { type: String, required: true, unique: true },
   patientName: { type: String, required: true },
+  patientGender: { type: String }, // NOVO CAMPO
   patientId: { type: String },
   patientBirthDate: { type: Date },
   diseaseCategory: { type: String, required: true },
@@ -337,8 +338,8 @@ app.get('/novo-certificado', (req, res) => {
     label { font-weight:600; color:#2d4a3b; }
     input, select { padding:0.8rem; border:1px solid #ddd; border-radius:8px; }
     .btn-emitir { background:#006633; color:white; border:none; padding:1rem; border-radius:50px; width:100%; cursor:pointer; font-size:1.2rem; }
-    .campos-dinamicos { background:#fafdfb; padding:1.5rem; border:1px dashed #99bbaa; border-radius:12px; }
-    .info-message { background:#e0f0e5; padding:1rem; border-radius:8px; }
+    #camposEspecificosContainer { display:contents; } /* sem estilo especial */
+    .info-message { display:none; } /* oculta mensagem antiga */
     #modalPreview { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; justify-content:center; align-items:center; }
     .modal-content { background:white; padding:2rem; border-radius:24px; max-width:600px; }
     .data-container { display:flex; gap:5px; }
@@ -394,11 +395,9 @@ app.get('/novo-certificado', (req, res) => {
         <div class="full-width campo"><label>Telefone</label><input type="tel" id="telefone"></div>
       </div>
 
-      <!-- Parâmetros específicos (campos dinâmicos) -->
+      <!-- Parâmetros específicos (campos dinâmicos) – agora sem quadro -->
       <div class="section-title">📋 Parâmetros específicos</div>
-      <div class="campos-dinamicos" id="camposEspecificosContainer">
-        <p class="info-message">👆 Selecione um tipo para ver os campos.</p>
-      </div>
+      <div id="camposEspecificosContainer" class="grid-2"></div>
 
       <!-- Responsável pela emissão (agora no final) -->
       <div class="section-title">🔬 Responsável pela emissão</div>
@@ -503,7 +502,7 @@ atualizarDias();
 document.getElementById('tipo').addEventListener('change', function() {
   const tipo = parseInt(this.value);
   const lista = examesPorTipo[tipo] || [];
-  let html = '<div class="grid-2">';
+  let html = '';
   lista.forEach(campo => {
     const label = formatarNomeCampo(campo);
     if (opcoesSelect[campo]) {
@@ -517,7 +516,6 @@ document.getElementById('tipo').addEventListener('change', function() {
       html += '<div class="campo"><label>' + label + '</label><input type="' + tipoInput + '" name="' + campo + '" id="campo_' + campo + '" placeholder="' + label + '" step="any"></div>';
     }
   });
-  html += '</div>';
   document.getElementById('camposEspecificosContainer').innerHTML = html;
 });
 
@@ -675,6 +673,7 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
           createdBy: laborantin.nome,
           certificateNumber: numero,
           patientName: paciente.nomeCompleto,
+          patientGender: paciente.genero, // NOVO CAMPO
           patientId: paciente.bi || null,
           patientBirthDate: paciente.dataNascimento ? new Date(paciente.dataNascimento) : null,
           diseaseCategory: `Tipo ${tipo}`,
@@ -735,7 +734,7 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
       .stroke();
     let y = 180;
 
-    // ESTABELECIMENTO (agora com título e posicionado após a linha)
+    // ESTABELECIMENTO
     doc.fillColor('#006633').fontSize(12).text('ESTABELECIMENTO:', 50, y);
     y += 15;
     doc.fontSize(14).text(lab.name, 70, y);
@@ -796,9 +795,24 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     doc.fontSize(10).text('Assinatura do Diretor', 350, y + 5).text(lab.director || '______', 350, y + 20);
     y += 50;
 
-    // QR Code centralizado
+    // QR Code centralizado – adaptado para tipo 1 (genótipo)
     try {
-      const qrData = `${certificate.certificateNumber}|${lab.name}|${certificate.patientName}`;
+      let qrData;
+      if (tipo === 1) {
+        // Formato para app de relacionamento: Prénom|Nom|Genre|Génotype|Groupe sanguin
+        const nameParts = certificate.patientName.split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+        const gender = certificate.patientGender || 'N/I';
+        const genotype = certificate.testResults?.genotipo || '';
+        const bloodGroup = certificate.testResults?.grupoSanguineo || '';
+        const bloodRh = certificate.testResults?.fatorRh || '';
+        // Concaténer groupe et Rh en enlevant les parenthèses éventuelles
+        const fullBlood = bloodGroup + (bloodRh ? bloodRh.replace(/[()]/g, '') : '');
+        qrData = `${firstName}|${lastName}|${gender}|${genotype}|${fullBlood}`;
+      } else {
+        qrData = `${certificate.certificateNumber}|${lab.name}|${certificate.patientName}`;
+      }
       const qrBuffer = await QRCode.toBuffer(qrData, { width: 100 });
       const pageWidth = doc.page.width; // 595
       const qrWidth = 100;
