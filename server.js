@@ -1,4 +1,4 @@
-// server.js - Versão final com QR específico para genótipo e remoção do quadro de parâmetros
+// server.js - Versão final com título do certificado e província explícita
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -64,7 +64,7 @@ const certificateSchema = new mongoose.Schema({
   createdBy: { type: String },
   certificateNumber: { type: String, required: true, unique: true },
   patientName: { type: String, required: true },
-  patientGender: { type: String }, // NOVO CAMPO
+  patientGender: { type: String }, // 'M' ou 'F'
   patientId: { type: String },
   patientBirthDate: { type: Date },
   diseaseCategory: { type: String, required: true },
@@ -338,8 +338,8 @@ app.get('/novo-certificado', (req, res) => {
     label { font-weight:600; color:#2d4a3b; }
     input, select { padding:0.8rem; border:1px solid #ddd; border-radius:8px; }
     .btn-emitir { background:#006633; color:white; border:none; padding:1rem; border-radius:50px; width:100%; cursor:pointer; font-size:1.2rem; }
-    #camposEspecificosContainer { display:contents; } /* sem estilo especial */
-    .info-message { display:none; } /* oculta mensagem antiga */
+    #camposEspecificosContainer { display:contents; }
+    .info-message { display:none; }
     #modalPreview { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; justify-content:center; align-items:center; }
     .modal-content { background:white; padding:2rem; border-radius:24px; max-width:600px; }
     .data-container { display:flex; gap:5px; }
@@ -673,7 +673,7 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
           createdBy: laborantin.nome,
           certificateNumber: numero,
           patientName: paciente.nomeCompleto,
-          patientGender: paciente.genero, // NOVO CAMPO
+          patientGender: paciente.genero,
           patientId: paciente.bi || null,
           patientBirthDate: paciente.dataNascimento ? new Date(paciente.dataNascimento) : null,
           diseaseCategory: `Tipo ${tipo}`,
@@ -739,7 +739,8 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     y += 15;
     doc.fontSize(14).text(lab.name, 70, y);
     y += 20;
-    doc.fontSize(10).fillColor('#666').text(`NIF: ${lab.nif} | ${lab.province}`, 70, y);
+    // Corrigido: adicionar "Província:" explicitamente
+    doc.fontSize(10).fillColor('#666').text(`NIF: ${lab.nif} | Província: ${lab.province}`, 70, y);
     y += 15;
     doc.text(`Endereço: ${lab.address} | Tel: ${lab.phone1}`, 70, y);
     y += 30;
@@ -747,6 +748,22 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     doc.fillColor('#006633').fontSize(12).text(`CERTIFICADO Nº: ${certificate.certificateNumber}`, 50, y);
     doc.fontSize(10).fillColor('#666').text(`Emissão: ${new Date(certificate.createdAt).toLocaleDateString('pt-PT')}`, 50, y + 15);
     y += 40;
+
+    // TÍTULO DO TIPO DE CERTIFICADO (adicionado)
+    const tipos = {
+      1: 'GENÓTIPO',
+      2: 'BOA SAÚDE',
+      3: 'INCAPACIDADE',
+      4: 'APTIDÃO',
+      5: 'SAÚDE MATERNA',
+      6: 'PRÉ-NATAL',
+      7: 'EPIDEMIOLÓGICO',
+      8: 'CSD'
+    };
+    const tipoMatch = certificate.diseaseCategory.match(/\d+/);
+    const tipo = tipoMatch ? parseInt(tipoMatch[0]) : 1;
+    doc.fillColor('#006633').fontSize(14).text(tipos[tipo] || 'CERTIFICADO MÉDICO', 50, y);
+    y += 20;
 
     doc.fillColor('#006633').text('RESPONSÁVEL PELA EMISSÃO:', 50, y);
     y += 20;
@@ -760,10 +777,6 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     if (certificate.patientId) { doc.text(`Documento: ${certificate.patientId}`, 70, y); y += 15; }
     if (certificate.patientBirthDate) { doc.text(`Nascimento: ${new Date(certificate.patientBirthDate).toLocaleDateString('pt-PT')}`, 70, y); y += 15; }
     if (certificate.idadeCalculada) { doc.text(`Idade: ${certificate.idadeCalculada} anos`, 70, y); y += 15; }
-
-    // Extrair o tipo do certificado (número inteiro) da diseaseCategory
-    const tipoMatch = certificate.diseaseCategory.match(/\d+/);
-    const tipo = tipoMatch ? parseInt(tipoMatch[0]) : 1; // fallback para 1
 
     // Obter lista de campos para este tipo
     const campos = camposPorTipo[tipo] || [];
@@ -807,7 +820,6 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
         const genotype = certificate.testResults?.genotipo || '';
         const bloodGroup = certificate.testResults?.grupoSanguineo || '';
         const bloodRh = certificate.testResults?.fatorRh || '';
-        // Concaténer groupe et Rh en enlevant les parenthèses éventuelles
         const fullBlood = bloodGroup + (bloodRh ? bloodRh.replace(/[()]/g, '') : '');
         qrData = `${firstName}|${lastName}|${gender}|${genotype}|${fullBlood}`;
       } else {
