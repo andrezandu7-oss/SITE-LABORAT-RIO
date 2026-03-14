@@ -12,9 +12,9 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Connexion MongoDB (sans options obsolètes)
+// Connexion MongoDB
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/sns';
-mongoose.connect(MONGODB_URI)
+mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('✅ MongoDB conectado'))
   .catch(err => console.error('❌ Erro MongoDB:', err));
 
@@ -49,6 +49,11 @@ const establishmentSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true, index: true }
 }, { timestamps: true });
 
+establishmentSchema.virtual('status').get(function() {
+  if (!this.isActive) return 'Inativo';
+  return this.licenseValidity < new Date() ? 'Inativo' : 'Ativo';
+});
+
 const Establishment = mongoose.model('Establishment', establishmentSchema);
 
 const certificateSchema = new mongoose.Schema({
@@ -75,14 +80,14 @@ const Certificate = mongoose.model('Certificate', certificateSchema);
 
 // ========== Utilitaires ==========
 const camposPorTipo = {
-  1: ['grupoSanguineo','fatorRh','genotipo','hemoglobina','hematocrito','contagem_reticulocitos','eletroforese'],
-  2: ['peso','altura','pressaoArterial','frequenciaCardiaca','frequenciaRespiratoria','temperatura','saturacaoOxigenio','glicemia','colesterolTotal','triglicerideos'],
-  3: ['tipoIncapacidade','causa','grau','dataInicio','partesAfetadas','limitacoes','necessitaAcompanhante'],
-  4: ['tipoAptidao','modalidade','resultado','restricoes','validade'],
-  5: ['gestacoes','partos','abortos','nascidosVivos','dum','dpp','idadeGestacional','consultasCPN','hemograma','gotaEspessa','hiv','vdrl','hbs','glicemia','creatinina','ureia','tgo','grupoSanguineo','fatorRh','exsudadoVaginal','pesoAtual','alturaUterina','batimentosCardiacosFeto','movimentosFetais','edema','proteinuria'],
-  6: ['grupoSanguineo','fatorRh','hemograma','gotaEspessa','hiv','vdrl','hbs','vidal','glicemia','creatinina','ureia','tgo','testeGravidez','exsudadoVaginal','vs','falsiformacao'],
-  7: ['doenca','outraDoenca','dataInicioSintomas','dataDiagnostico','metodoDiagnostico','tipoExame','resultado','tratamento','internamento','dataInternamento','contatos'],
-  8: ['destino','motivoViagem','dataPartida','dataRetorno','vacinaFebreAmarela','dataVacinaFebreAmarela','loteVacinaFebreAmarela','vacinaCovid19','dosesCovid','testeCovid','tipoTesteCovid','dataTesteCovid','resultadoTesteCovid','outrasVacinas','medicamentos','condicoesEspeciais','recomendacoes']
+  1: ['grupoSanguineo', 'fatorRh', 'genotipo', 'hemoglobina', 'hematocrito', 'contagem_reticulocitos', 'eletroforese'],
+  2: ['peso', 'altura', 'pressaoArterial', 'frequenciaCardiaca', 'frequenciaRespiratoria', 'temperatura', 'saturacaoOxigenio', 'glicemia', 'colesterolTotal', 'triglicerideos'],
+  3: ['tipoIncapacidade', 'causa', 'grau', 'dataInicio', 'partesAfetadas', 'limitacoes', 'necessitaAcompanhante'],
+  4: ['tipoAptidao', 'modalidade', 'resultado', 'restricoes', 'validade'],
+  5: ['gestacoes', 'partos', 'abortos', 'nascidosVivos', 'dum', 'dpp', 'idadeGestacional', 'consultasCPN', 'hemograma', 'gotaEspessa', 'hiv', 'vdrl', 'hbs', 'glicemia', 'creatinina', 'ureia', 'tgo', 'grupoSanguineo', 'fatorRh', 'exsudadoVaginal', 'pesoAtual', 'alturaUterina', 'batimentosCardiacosFeto', 'movimentosFetais', 'edema', 'proteinuria'],
+  6: ['grupoSanguineo', 'fatorRh', 'hemograma', 'gotaEspessa', 'hiv', 'vdrl', 'hbs', 'vidal', 'glicemia', 'creatinina', 'ureia', 'tgo', 'testeGravidez', 'exsudadoVaginal', 'vs', 'falsiformacao'],
+  7: ['doenca', 'outraDoenca', 'dataInicioSintomas', 'dataDiagnostico', 'metodoDiagnostico', 'tipoExame', 'resultado', 'tratamento', 'internamento', 'dataInternamento', 'contatos'],
+  8: ['destino', 'motivoViagem', 'dataPartida', 'dataRetorno', 'vacinaFebreAmarela', 'dataVacinaFebreAmarela', 'loteVacinaFebreAmarela', 'vacinaCovid19', 'dosesCovid', 'testeCovid', 'tipoTesteCovid', 'dataTesteCovid', 'resultadoTesteCovid', 'outrasVacinas', 'medicamentos', 'condicoesEspeciais', 'recomendacoes']
 };
 
 function formatarNomeCampo(chave) {
@@ -126,7 +131,7 @@ function calcularIMC(peso, altura) {
   return { imc: imc.toFixed(2), classificacao };
 }
 
-// ========== Middleware JWT (corrigé) ==========
+// ========== Middleware JWT ==========
 const authJWT = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -135,10 +140,8 @@ const authJWT = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret-key');
     const lab = await Establishment.findById(decoded.id);
     if (!lab) return res.status(401).json({ erro: 'Laboratório não encontrado' });
-    // Vérification avec isActive et licence (pas de virtual)
-    if (!lab.isActive || lab.licenseValidity < new Date()) {
-      return res.status(403).json({ erro: 'Laboratório inativo' });
-    }
+    // Utilisation du virtual 'status' (présent dans le schéma)
+    if (lab.status === 'Inativo') return res.status(403).json({ erro: 'Laboratório inativo' });
     req.lab = lab;
     next();
   } catch (err) {
@@ -630,10 +633,7 @@ app.post('/api/laboratorio/login', async (req, res) => {
       }
     }
     if (!lab) return res.status(401).json({ erro: 'Chave API inválida' });
-    // Vérification avec isActive et licence
-    if (!lab.isActive || lab.licenseValidity < new Date()) {
-      return res.status(403).json({ erro: 'Laboratório inativo' });
-    }
+    if (lab.status === 'Inativo') return res.status(403).json({ erro: 'Laboratório inativo' });
 
     const token = jwt.sign({ id: lab._id }, process.env.JWT_SECRET || 'secret-key', { expiresIn: '7d' });
     res.json({ token, lab: { nome: lab.name } });
