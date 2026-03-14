@@ -56,7 +56,6 @@ establishmentSchema.virtual('status').get(function() {
 
 const Establishment = mongoose.model('Establishment', establishmentSchema);
 
-// Schema Certificate - com patientGender
 const certificateSchema = new mongoose.Schema({
   establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true, index: true },
   createdBy: { type: String },
@@ -80,7 +79,6 @@ certificateSchema.index({ patientName: 'text' });
 const Certificate = mongoose.model('Certificate', certificateSchema);
 
 // ========== Utilitaires ==========
-// Lista de campos por tipo (mesma do frontend)
 const camposPorTipo = {
   1: ['grupoSanguineo', 'fatorRh', 'genotipo', 'hemoglobina', 'hematocrito', 'contagem_reticulocitos', 'eletroforese'],
   2: ['peso', 'altura', 'pressaoArterial', 'frequenciaCardiaca', 'frequenciaRespiratoria', 'temperatura', 'saturacaoOxigenio', 'glicemia', 'colesterolTotal', 'triglicerideos'],
@@ -306,7 +304,7 @@ async function carregarCertificados() {
     if (certs.length === 0) html = '<tr><td colspan="5" style="text-align:center;">Nenhum certificado</td></tr>';
     else {
       certs.forEach(c => {
-        html += '<tr><td>' + c.certificateNumber + '</td><td>' + c.patientName + '</td><td>' + (c.diseaseCategory || '—') + '</td><td>' + new Date(c.createdAt).toLocaleDateString('pt-PT') + '</td><td><button class="btn" onclick="baixarPDF(\'' + c._id + '\')">📄 PDF</button></td></tr>';
+        html += '<tr><td>' + c.certificateNumber + '</td><td>' + c.patientName + '</td><td>' + (c.diseaseCategory || '—') + '</td><td>' + new Date(c.createdAt).toLocaleDateString('pt-PT') + '</td><td><button class="btn" onclick="baixarPDF(\\'' + c._id + '\\')">📄 PDF</button></td></tr>';
       });
     }
     document.getElementById('tabelaCertificados').innerHTML = html;
@@ -434,7 +432,6 @@ app.get('/novo-certificado', (req, res) => {
   </div>
 </div>
 <script>
-// Lista completa de exames por tipo (8 tipos)
 const examesPorTipo = {
   1: ['grupoSanguineo','fatorRh','genotipo','hemoglobina','hematocrito','contagem_reticulocitos','eletroforese'],
   2: ['peso','altura','pressaoArterial','frequenciaCardiaca','frequenciaRespiratoria','temperatura','saturacaoOxigenio','glicemia','colesterolTotal','triglicerideos'],
@@ -490,7 +487,6 @@ function atualizarDias() {
   }
 }
 
-// Token e inicialização
 const token = localStorage.getItem('token');
 if (!token) {
   document.getElementById('loadingMessage').innerText = 'Sessão expirada';
@@ -500,16 +496,13 @@ if (!token) {
   document.getElementById('certForm').style.display = 'block';
 }
 
-// Events para data
 document.getElementById('mes').addEventListener('change', atualizarDias);
 document.getElementById('ano').addEventListener('input', atualizarDias);
-// Pré-definir ano atual e mês atual
 const hoje = new Date();
 document.getElementById('ano').value = hoje.getFullYear();
 document.getElementById('mes').value = hoje.getMonth() + 1;
 atualizarDias();
 
-// Campos dinâmicos conforme tipo selecionado
 document.getElementById('tipo').addEventListener('change', function() {
   const tipo = parseInt(this.value);
   const lista = examesPorTipo[tipo] || [];
@@ -533,7 +526,6 @@ document.getElementById('tipo').addEventListener('change', function() {
   document.getElementById('camposEspecificosContainer').innerHTML = html;
 });
 
-// Pré-visualização
 document.getElementById('certForm').addEventListener('submit', function(e) {
   e.preventDefault();
   let html = '<div><strong>Paciente:</strong> ' + document.getElementById('nomeCompleto').value + '</div><div style="border-top:1px solid #eee; margin-top:1rem;">';
@@ -549,13 +541,11 @@ window.fecharPreview = () => {
   document.getElementById('modalPreview').style.display = 'none';
 };
 
-// Confirmação e envio
 document.getElementById('btnConfirmarFinal').addEventListener('click', async function() {
   fecharPreview();
   document.getElementById('btnEmitir').disabled = true;
   document.getElementById('btnEmitir').textContent = 'Emitindo...';
 
-  // Construir data de nascimento a partir dos campos
   const dia = document.getElementById('dia').value;
   const mes = document.getElementById('mes').value;
   const ano = document.getElementById('ano').value;
@@ -747,7 +737,6 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename=${certificate.certificateNumber}.pdf`);
     doc.pipe(res);
 
-    // En-tête
     doc.fillColor('#006633');
     doc.fontSize(20).text('REPÚBLICA DE ANGOLA', 0, 50, { align: 'center' });
     doc.fontSize(16).text('MINISTÉRIO DA SAÚDE', 0, 80, { align: 'center' });
@@ -758,7 +747,6 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
       .stroke();
     let y = 180;
 
-    // ESTABELECIMENTO
     doc.fillColor('#006633').fontSize(12).text('ESTABELECIMENTO:', 50, y);
     y += 15;
     doc.fontSize(14).text(lab.name, 70, y);
@@ -772,7 +760,6 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     doc.fontSize(10).fillColor('#666').text(`Emissão: ${new Date(certificate.createdAt).toLocaleDateString('pt-PT')}`, 50, y + 15);
     y += 40;
 
-    // TÍTULO DO TIPO DE CERTIFICADO
     const tipos = {
       1: 'GENÓTIPO',
       2: 'BOA SAÚDE',
@@ -801,7 +788,6 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     if (certificate.patientBirthDate) { doc.text(`Nascimento: ${new Date(certificate.patientBirthDate).toLocaleDateString('pt-PT')}`, 70, y); y += 15; }
     if (certificate.idadeCalculada) { doc.text(`Idade: ${certificate.idadeCalculada} anos`, 70, y); y += 15; }
 
-    // Obter lista de campos para este tipo
     const campos = camposPorTipo[tipo] || [];
     if (campos.length > 0) {
       doc.fillColor('#006633').text('RESULTADOS DOS EXAMES:', 50, y);
@@ -824,18 +810,15 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
       y += 25;
     }
 
-    // Linhas de assinatura
     doc.lineWidth(1).moveTo(70, y).lineTo(270, y).stroke();
     doc.fontSize(10).text('Assinatura do Laborantin', 70, y + 5).text(certificate.createdBy || '______', 70, y + 20);
     doc.lineWidth(1).moveTo(350, y).lineTo(550, y).stroke();
     doc.fontSize(10).text('Assinatura do Diretor', 350, y + 5).text(lab.director || '______', 350, y + 20);
     y += 50;
 
-    // QR Code centralizado – adaptado para tipo 1 (genótipo)
     try {
       let qrData;
       if (tipo === 1) {
-        // Formato para app de relacionamento: Prénom|Nom|Genre|Génotype|Groupe sanguin
         const nameParts = certificate.patientName.split(' ');
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
@@ -849,14 +832,13 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
         qrData = `${certificate.certificateNumber}|${lab.name}|${certificate.patientName}`;
       }
       const qrBuffer = await QRCode.toBuffer(qrData, { width: 100 });
-      const pageWidth = doc.page.width; // 595
+      const pageWidth = doc.page.width;
       const qrWidth = 100;
       const qrX = (pageWidth - qrWidth) / 2;
       doc.image(qrBuffer, qrX, y, { width: qrWidth });
       y += 110;
     } catch (qrError) { console.error('Erro QR:', qrError); }
 
-    // Rodapé
     doc.fontSize(8).fillColor('#666').text('Documento válido em todo território nacional', 0, 780, { align: 'center' });
     doc.end();
   } catch (error) {
