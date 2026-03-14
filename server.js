@@ -30,12 +30,7 @@ const PROVINCIAS = [
 ];
 
 const establishmentSchema = new mongoose.Schema({
-  establishmentType: {
-    type: String,
-    enum: ['laboratorio', 'hospital', 'empresa', 'ong'],
-    required: true,
-    index: true
-  },
+  establishmentType: { type: String, enum: ['laboratorio', 'hospital', 'empresa', 'ong'], required: true, index: true },
   name: { type: String, required: true, trim: true },
   nif: { type: String, required: true, unique: true, trim: true },
   institutionType: { type: String, enum: ['Público', 'Privado'], required: true },
@@ -87,17 +82,17 @@ const Certificate = mongoose.model('Certificate', certificateSchema);
 // ========== Utilitaires ==========
 // Lista de campos por tipo (mesma do frontend)
 const camposPorTipo = {
-  1: ['grupoSanguineo', 'fatorRh', 'genotipo', 'hemoglobina', 'hematocrito', 'contagem_reticulocitos', 'eletroforese'],
-  2: ['peso', 'altura', 'pressaoArterial', 'frequenciaCardiaca', 'frequenciaRespiratoria', 'temperatura', 'saturacaoOxigenio', 'glicemia', 'colesterolTotal', 'triglicerideos'],
-  3: ['tipoIncapacidade', 'causa', 'grau', 'dataInicio', 'partesAfetadas', 'limitacoes', 'necessitaAcompanhante'],
-  4: ['tipoAptidao', 'modalidade', 'resultado', 'restricoes', 'validade'],
-  5: ['gestacoes', 'partos', 'abortos', 'nascidosVivos', 'dum', 'dpp', 'idadeGestacional', 'consultasCPN', 'hemograma', 'gotaEspessa', 'hiv', 'vdrl', 'hbs', 'glicemia', 'creatinina', 'ureia', 'tgo', 'grupoSanguineo', 'fatorRh', 'exsudadoVaginal', 'pesoAtual', 'alturaUterina', 'batimentosCardiacosFeto', 'movimentosFetais', 'edema', 'proteinuria'],
-  6: ['grupoSanguineo', 'fatorRh', 'hemograma', 'gotaEspessa', 'hiv', 'vdrl', 'hbs', 'vidal', 'glicemia', 'creatinina', 'ureia', 'tgo', 'testeGravidez', 'exsudadoVaginal', 'vs', 'falsiformacao'],
-  7: ['doenca', 'outraDoenca', 'dataInicioSintomas', 'dataDiagnostico', 'metodoDiagnostico', 'tipoExame', 'resultado', 'tratamento', 'internamento', 'dataInternamento', 'contatos'],
-  8: ['destino', 'motivoViagem', 'dataPartida', 'dataRetorno', 'vacinaFebreAmarela', 'dataVacinaFebreAmarela', 'loteVacinaFebreAmarela', 'vacinaCovid19', 'dosesCovid', 'testeCovid', 'tipoTesteCovid', 'dataTesteCovid', 'resultadoTesteCovid', 'outrasVacinas', 'medicamentos', 'condicoesEspeciais', 'recomendacoes']
+  1: ['grupoSanguineo','fatorRh','genotipo','hemoglobina','hematocrito','contagem_reticulocitos','eletroforese'],
+  2: ['peso','altura','pressaoArterial','frequenciaCardiaca','frequenciaRespiratoria','temperatura','saturacaoOxigenio','glicemia','colesterolTotal','triglicerideos'],
+  3: ['tipoIncapacidade','causa','grau','dataInicio','partesAfetadas','limitacoes','necessitaAcompanhante'],
+  4: ['tipoAptidao','modalidade','resultado','restricoes','validade'],
+  5: ['gestacoes','partos','abortos','nascidosVivos','dum','dpp','idadeGestacional','consultasCPN','hemograma','gotaEspessa','hiv','vdrl','hbs','glicemia','creatinina','ureia','tgo','grupoSanguineo','fatorRh','exsudadoVaginal','pesoAtual','alturaUterina','batimentosCardiacosFeto','movimentosFetais','edema','proteinuria'],
+  6: ['grupoSanguineo','fatorRh','hemograma','gotaEspessa','hiv','vdrl','hbs','vidal','glicemia','creatinina','ureia','tgo','testeGravidez','exsudadoVaginal','vs','falsiformacao'],
+  7: ['doenca','outraDoenca','dataInicioSintomas','dataDiagnostico','metodoDiagnostico','tipoExame','resultado','tratamento','internamento','dataInternamento','contatos'],
+  8: ['destino','motivoViagem','dataPartida','dataRetorno','vacinaFebreAmarela','dataVacinaFebreAmarela','loteVacinaFebreAmarela','vacinaCovid19','dosesCovid','testeCovid','tipoTesteCovid','dataTesteCovid','resultadoTesteCovid','outrasVacinas','medicamentos','condicoesEspeciais','recomendacoes']
 };
 
-function formatarNomeCampo(chave) {
+function formatNameCampo(chave) {
   return chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
 }
 
@@ -467,7 +462,7 @@ const opcoesSelect = {
   'testeCovid': ['Sim','Não']
 };
 
-function formatarNomeCampo(chave) {
+function formatNameCampo(chave) {
   return chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
 }
 
@@ -520,7 +515,7 @@ document.getElementById('tipo').addEventListener('change', function() {
   const lista = examesPorTipo[tipo] || [];
   let html = '';
   lista.forEach(campo => {
-    const label = formatarNomeCampo(campo);
+    const label = formatNameCampo(campo);
     if (opcoesSelect[campo]) {
       html += '<div class="campo"><label>' + label + '</label><select name="' + campo + '" id="campo_' + campo + '">';
       html += '<option value="" selected disabled>Selecione...</option>';
@@ -543,7 +538,7 @@ document.getElementById('certForm').addEventListener('submit', function(e) {
   e.preventDefault();
   let html = '<div><strong>Paciente:</strong> ' + document.getElementById('nomeCompleto').value + '</div><div style="border-top:1px solid #eee; margin-top:1rem;">';
   document.querySelectorAll('#camposEspecificosContainer input, #camposEspecificosContainer select').forEach(i => {
-    if (i.value) html += '<div><span>' + formatarNomeCampo(i.name) + '</span> <b>' + i.value + '</b></div>';
+    if (i.value) html += '<div><span>' + formatNameCampo(i.name) + '</span> <b>' + i.value + '</b></div>';
   });
   html += '</div>';
   document.getElementById('previewContent').innerHTML = html;
@@ -716,7 +711,7 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
           classificacaoIMC: (dados && dados.peso && dados.altura) ? calcularIMC(dados.peso, dados.altura).classificacao : null
         });
         await certificado.save();
-        break; // Sucesso
+        break;
       } catch (err) {
         if (err.code === 11000) {
           tentativas++;
@@ -768,7 +763,6 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     y += 15;
     doc.fontSize(14).text(lab.name, 70, y);
     y += 20;
-    // Corrigido: adicionar "Província:" explicitamente
     doc.fontSize(10).fillColor('#666').text(`NIF: ${lab.nif} | Província: ${lab.province}`, 70, y);
     y += 15;
     doc.text(`Endereço: ${lab.address} | Tel: ${lab.phone1}`, 70, y);
@@ -778,7 +772,7 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     doc.fontSize(10).fillColor('#666').text(`Emissão: ${new Date(certificate.createdAt).toLocaleDateString('pt-PT')}`, 50, y + 15);
     y += 40;
 
-    // TÍTULO DO TIPO DE CERTIFICADO (adicionado)
+    // TÍTULO DO TIPO DE CERTIFICADO
     const tipos = {
       1: 'GENÓTIPO',
       2: 'BOA SAÚDE',
@@ -816,7 +810,7 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
       campos.forEach(campo => {
         const valor = certificate.testResults ? certificate.testResults[campo] : null;
         const valorExibido = (valor && valor.toString().trim() !== '') ? valor : '(não solicitado)';
-        const nomeFormatado = formatarNomeCampo(campo);
+        const nomeFormatado = formatNameCampo(campo);
         doc.text(`${nomeFormatado}: ${valorExibido}`, 70, y);
         y += 15;
         if (y > 700) { doc.addPage(); y = 50; }
@@ -872,3 +866,4 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 Laboratório rodando na porta ${PORT}`));
+```
