@@ -1,4 +1,4 @@
-// server.js - Versão final com título do certificado e província explícita
+
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 const path = require('path');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -22,11 +23,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ======== Modèles ========
+// ========== Modèles ==========
 const PROVINCIAS = [
-  'Bengo', 'Benguela', 'Bié', 'Cabinda', 'Cuando Cubango', 'Cuanza Norte',
-  'Cuanza Sul', 'Cunene', 'Huambo', 'Huila', 'Luanda', 'Lunda Norte',
-  'Lunda Sul', 'Malanje', 'Moxico', 'Namibe', 'Uíge', 'Zaire'
+  'Bengo', 'Benguela', 'Bié', 'Cabinda', 'Cuando Cubango',
+  'Cuanza Norte', 'Cuanza Sul', 'Cunene', 'Huambo', 'Huíla',
+  'Luanda', 'Lunda Norte', 'Lunda Sul', 'Malanje', 'Moxico',
+  'Namibe', 'Uíge', 'Zaire'
 ];
 
 const establishmentSchema = new mongoose.Schema({
@@ -56,7 +58,7 @@ establishmentSchema.virtual('status').get(function() {
 
 const Establishment = mongoose.model('Establishment', establishmentSchema);
 
-// Schema Certificate - com patientGender
+// Schema Certificate – com patientGender
 const certificateSchema = new mongoose.Schema({
   establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment', required: true, index: true },
   createdBy: { type: String },
@@ -92,7 +94,7 @@ const camposPorTipo = {
   8: ['destino','motivoViagem','dataPartida','dataRetorno','vacinaFebreAmarela','dataVacinaFebreAmarela','loteVacinaFebreAmarela','vacinaCovid19','dosesCovid','testeCovid','tipoTesteCovid','dataTesteCovid','resultadoTesteCovid','outrasVacinas','medicamentos','condicoesEspeciais','recomendacoes']
 };
 
-function formatNameCampo(chave) {
+function formatarNomeCampo(chave) {
   return chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
 }
 
@@ -121,7 +123,7 @@ function calcularIdade(dataNascimento) {
 }
 
 function calcularIMC(peso, altura) {
-  if (!peso || !altura || altura === 0) return { imc: null, classificacao: null };
+  if (!peso || !altura || altura <= 0) return { imc: null, classificacao: null };
   const imc = peso / (altura * altura);
   let classificacao = '';
   if (imc < 18.5) classificacao = 'Abaixo do peso';
@@ -138,6 +140,7 @@ const authJWT = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.status(401).json({ erro: 'Token não fornecido' });
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret-key');
     const lab = await Establishment.findById(decoded.id);
@@ -152,27 +155,15 @@ const authJWT = async (req, res, next) => {
 
 // ========== Rotas HTML ==========
 app.get('/', (req, res) => {
-  res.send(`<!DOCTYPE html>
+  res.send(`
+<!DOCTYPE html>
 <html>
 <head>
   <title>Login Laboratório</title>
-  <style>
-    body{background:#006633;font-family:Arial;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}
-    .box{background:white;padding:30px;border-radius:10px;width:300px;box-shadow:0 5px 15px rgba(0,0,0,0.3);}
-    h2{text-align:center;color:#006633;margin-bottom:20px;}
-    input,button{width:100%;padding:12px;margin:8px 0;box-sizing:border-box;border-radius:5px;border:1px solid #ddd;}
-    button{background:#006633;color:white;border:none;font-weight:bold;cursor:pointer;}
-    button:hover{background:#004d26;}
-    .erro{color:#c00;text-align:center;margin-top:10px;}
-  </style>
+  <style>body{background:#006633;font-family:Arial;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}.box{background:white;padding:30px;border-radius:10px;width:300px;box-shadow:0 5px 15px rgba(0,0,0,0.3);}h2{text-align:center;color:#006633;margin-bottom:20px;}input,button{width:100%;padding:12px;margin:8px 0;box-sizing:border-box;border-radius:5px;border:1px solid #ddd;}button{background:#006633;color:white;border:none;font-weight:bold;cursor:pointer;}button:hover{background:#004d26;}.erro{color:#c00;text-align:center;margin-top:10px;}</style>
 </head>
 <body>
-<div class="box">
-  <h2>🔬 Laboratório SNS</h2>
-  <input type="text" id="apiKey" placeholder="Chave API (LAB-...)" autofocus>
-  <button onclick="login()">Entrar</button>
-  <p id="erro" class="erro"></p>
-</div>
+<div class="box"><h2>🔬 Laboratório SNS</h2><input type="text" id="apiKey" placeholder="Chave API (LAB-...)" autofocus><button onclick="login()">Entrar</button><p id="erro" class="erro"></p></div>
 <script>
 async function login(){
   const key=document.getElementById('apiKey').value;
@@ -195,12 +186,13 @@ async function login(){
   }catch(e){ erro.innerText='Erro de ligação ao servidor'; }
 }
 </script>
-</body>
-</html>`);
+</body></html>
+  `);
 });
 
 app.get('/dashboard', (req, res) => {
-  res.send(`<!DOCTYPE html>
+  res.send(`
+<!DOCTYPE html>
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
@@ -215,8 +207,8 @@ app.get('/dashboard', (req, res) => {
     .sidebar a:hover, .sidebar button:hover { background:rgba(255,255,255,0.2); }
     .sidebar .novo-btn { background:#ffaa00; color:#00331a; font-weight:bold; }
     .sidebar .sair-btn { margin-top:auto; background:#c0392b; }
-    main { flex:1; padding:2rem; overflow-y:auto; }
-    header { display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem; }
+    .main { flex:1; padding:2rem; overflow-y:auto; }
+    .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem; }
     .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:1.5rem; margin-bottom:2rem; }
     .card { background:white; border-radius:12px; padding:1.5rem; box-shadow:0 4px 10px rgba(0,0,0,0.05); border-left:6px solid #006633; }
     .card .numero { font-size:2.5rem; font-weight:bold; color:#006633; }
@@ -231,17 +223,14 @@ app.get('/dashboard', (req, res) => {
 </head>
 <body>
 <div class="sidebar">
-  <h2>SNS · LAB</h2>
+  <h2>SNS • LAB</h2>
   <a href="#" onclick="mostrarSecao('dashboard')">📊 Dashboard</a>
-  <a href="#" onclick="mostrarSecao('certificados')">📋 Certificados</a>
-  <a href="#" class="novo-btn" onclick="window.location.href='/novo-certificado'">+ Novo Certificado</a>
+  <a href="#" onclick="mostrarSecao('certificados')">📜 Certificados</a>
+  <a href="#" class="novo-btn" onclick="window.location.href='/novo-certificado'">➕ Novo Certificado</a>
   <button class="sair-btn" onclick="logout()">🚪 Sair</button>
 </div>
-<main>
-  <div class="header">
-    <h1>Bem-vindo, <span id="labNome"></span></h1>
-    <span id="dataAtual"></span>
-  </div>
+<div class="main">
+  <div class="header"><h1>Bem-vindo, <span id="labNome"></span></h1><span id="dataAtual"></span></div>
   <div id="secaoDashboard" style="display:block;">
     <div class="cards">
       <div class="card"><h3>Total de Certificados</h3><div class="numero" id="totalCert">0</div></div>
@@ -260,37 +249,32 @@ app.get('/dashboard', (req, res) => {
       <button class="btn" onclick="carregarCertificados()">Filtrar</button>
     </div>
     <table>
-      <thead><tr><th>N° Certificado</th><th>Paciente</th><th>Tipo</th><th>Data</th><th>Ações</th></tr></thead>
+      <thead><tr><th>Nº Certificado</th><th>Paciente</th><th>Tipo</th><th>Data</th><th>Ações</th></tr></thead>
       <tbody id="tabelaCertificados"><tr><td colspan="5" style="text-align:center;">Carregando...</td></tr></tbody>
     </table>
   </div>
-</main>
+</div>
 <script>
 const token = localStorage.getItem('token');
 if (!token) window.location.href = '/';
 document.getElementById('labNome').innerText = localStorage.getItem('labNome') || 'Laboratório';
 document.getElementById('dataAtual').innerText = new Date().toLocaleDateString('pt-PT');
-
 function mostrarSecao(secao) {
   document.getElementById('secaoDashboard').style.display = secao === 'dashboard' ? 'block' : 'none';
   document.getElementById('secaoCertificados').style.display = secao === 'certificados' ? 'block' : 'none';
   if (secao === 'dashboard') carregarStats();
   if (secao === 'certificados') carregarCertificados();
 }
-
 async function carregarStats() {
   try {
-    const r = await fetch('/api/laboratorio/stats', { headers: {'Authorization': 'Bearer ' + token } });
+    const r = await fetch('/api/laboratorio/stats', { headers: { 'Authorization': 'Bearer ' + token } });
     const data = await r.json();
     document.getElementById('totalCert').innerText = data.total;
     let html = '';
-    data.porTipo.forEach(item => {
-      html += '<div><span class="badge">' + (item._id || 'Sem tipo') + '</span> ' + item.count + '</div>';
-    });
+    data.porTipo.forEach(item => { html += '<div><span class="badge">' + (item._id || 'Sem tipo') + '</span> ' + item.count + '</div>'; });
     document.getElementById('statsTipo').innerHTML = html || '<div>Nenhum dado</div>';
   } catch (e) { console.error(e); }
 }
-
 async function carregarCertificados() {
   const tipo = document.getElementById('filtroTipo').value;
   const busca = document.getElementById('buscaPaciente').value;
@@ -300,24 +284,21 @@ async function carregarCertificados() {
   if (busca) params.append('paciente', busca);
   if (params.toString()) url += '?' + params.toString();
   try {
-    const r = await fetch(url, { headers: {'Authorization': 'Bearer ' + token } });
+    const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
     const certs = await r.json();
     let html = '';
     if (certs.length === 0) html = '<tr><td colspan="5" style="text-align:center;">Nenhum certificado</td></tr>';
     else {
       certs.forEach(c => {
-        html += '<tr><td>' + c.certificateNumber + '</td><td>' + c.patientName + '</td><td>' + (c.diseaseCategory || '—') + '</td><td>' + new Date(c.createdAt).toLocaleDateString('pt-PT') + '</td><td><button class="btn" onclick="baixarPDF(\'' + c._id + '\')">📄 PDF</button></td></tr>';
+        html += '<tr><td>' + c.certificateNumber + '</td><td>' + c.patientName + '</td><td>' + (c.diseaseCategory || '—') + '</td><td>' + new Date(c.createdAt).toLocaleDateString('pt-PT') + '</td><td><button class="btn" onclick="baixarPDF(\\'' + c._id + '\\')">📄 PDF</button></td></tr>';
       });
     }
     document.getElementById('tabelaCertificados').innerHTML = html;
-  } catch (e) {
-    document.getElementById('tabelaCertificados').innerHTML = '<tr><td colspan="5" style="text-align:center;">Erro ao carregar</td></tr>';
-  }
+  } catch (e) { document.getElementById('tabelaCertificados').innerHTML = '<tr><td colspan="5" style="text-align:center;">Erro ao carregar</td></tr>'; }
 }
-
 async function baixarPDF(id) {
   try {
-    const r = await fetch('/api/laboratorio/certificados/' + id + '/pdf', { headers: {'Authorization': 'Bearer ' + token } });
+    const r = await fetch('/api/laboratorio/certificados/' + id + '/pdf', { headers: { 'Authorization': 'Bearer ' + token } });
     if (!r.ok) throw new Error();
     const blob = await r.blob();
     const url = window.URL.createObjectURL(blob);
@@ -327,20 +308,16 @@ async function baixarPDF(id) {
     a.click();
   } catch (e) { alert('Erro ao gerar PDF'); }
 }
-
-function logout() {
-  localStorage.clear();
-  window.location.href = '/';
-}
-
+function logout() { localStorage.clear(); window.location.href = '/'; }
 carregarStats();
 </script>
-</body>
-</html>`);
+</body></html>
+  `);
 });
 
 app.get('/novo-certificado', (req, res) => {
-  res.send(`<!DOCTYPE html>
+  res.send(`
+<!DOCTYPE html>
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
@@ -387,20 +364,30 @@ app.get('/novo-certificado', (req, res) => {
       </div>
 
       <!-- Dados do paciente -->
-      <div class="section-title">Dados do paciente</div>
+      <div class="section-title">👤 Dados do paciente</div>
       <div class="grid-2">
-        <div class="full-width campo"><label>Nome completo</label><input type="text" id="nomeCompleto" required></div>
+        <div class="full-width campo"><label>Nome completo *</label><input type="text" id="nomeCompleto" required></div>
         <div class="campo"><label>BI</label><input type="text" id="bi"></div>
-        <div class="campo"><label>Gênero</label><select id="genero"><option value="M">Masculino</option><option value="F" selected>Feminino</option></select></div>
-        <div class="full-width campo"><label>Data de Nascimento</label>
+        <div class="campo"><label>Género</label><select id="genero"><option value="M">Masculino</option><option value="F" selected>Feminino</option></select></div>
+        <div class="full-width campo"><label>Data de Nascimento *</label>
           <div class="data-container">
-            <select id="dia" required><option value="">Dia</option></select>
+            <select id="dia" required>
+              <option value="">Dia</option>
+            </select>
             <select id="mes" required>
               <option value="">Mês</option>
-              <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option>
-              <option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option>
-              <option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option>
-              <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+              <option value="1">Janeiro</option>
+              <option value="2">Fevereiro</option>
+              <option value="3">Março</option>
+              <option value="4">Abril</option>
+              <option value="5">Maio</option>
+              <option value="6">Junho</option>
+              <option value="7">Julho</option>
+              <option value="8">Agosto</option>
+              <option value="9">Setembro</option>
+              <option value="10">Outubro</option>
+              <option value="11">Novembro</option>
+              <option value="12">Dezembro</option>
             </select>
             <input type="number" id="ano" placeholder="Ano" min="1900" max="2100" required>
           </div>
@@ -408,24 +395,26 @@ app.get('/novo-certificado', (req, res) => {
         <div class="full-width campo"><label>Telefone</label><input type="tel" id="telefone"></div>
       </div>
 
-      <!-- Parâmetros específicos -->
-      <div class="section-title">Parâmetros específicos</div>
+      <!-- Parâmetros específicos (campos dinâmicos) – agora sem quadro -->
+      <div class="section-title">📋 Parâmetros específicos</div>
       <div id="camposEspecificosContainer" class="grid-2"></div>
 
-      <!-- Responsável pela emissão -->
-      <div class="section-title">Responsável pela emissão</div>
+      <!-- Responsável pela emissão (agora no final) -->
+      <div class="section-title">🔬 Responsável pela emissão</div>
       <div class="grid-2">
-        <div class="full-width campo"><label>Nome do laborantin / técnico</label><input type="text" id="laborantinNome" required></div>
+        <div class="full-width campo"><label>Nome do laborantin / técnico *</label><input type="text" id="laborantinNome" required></div>
         <div class="campo"><label>Registro profissional</label><input type="text" id="laborantinRegistro"></div>
       </div>
-      <button type="submit" class="btn-emitir" id="btnEmitir">Emitir certificado</button>
+
+      <button type="submit" class="btn-emitir" id="btnEmitir">📥 Emitir certificado</button>
     </form>
     <div id="resultadoArea" class="hidden" style="display:none;"></div>
   </div>
 </div>
+
 <div id="modalPreview">
   <div class="modal-content">
-    <h2 style="color:#006633;">Confirmar Dados</h2>
+    <h2 style="color:#006633;">🔍 Confirmar Dados</h2>
     <div id="previewContent"></div>
     <div style="display:flex; gap:1rem; margin-top:2rem;">
       <button type="button" onclick="fecharPreview()" style="flex:1; background:#f0f0f0; padding:1rem; border-radius:50px;">Modificar</button>
@@ -433,6 +422,7 @@ app.get('/novo-certificado', (req, res) => {
     </div>
   </div>
 </div>
+
 <script>
 // Lista completa de exames por tipo (8 tipos)
 const examesPorTipo = {
@@ -445,12 +435,11 @@ const examesPorTipo = {
   7: ['doenca','outraDoenca','dataInicioSintomas','dataDiagnostico','metodoDiagnostico','tipoExame','resultado','tratamento','internamento','dataInternamento','contatos'],
   8: ['destino','motivoViagem','dataPartida','dataRetorno','vacinaFebreAmarela','dataVacinaFebreAmarela','loteVacinaFebreAmarela','vacinaCovid19','dosesCovid','testeCovid','tipoTesteCovid','dataTesteCovid','resultadoTesteCovid','outrasVacinas','medicamentos','condicoesEspeciais','recomendacoes']
 };
-
 const opcoesSelect = {
   'grupoSanguineo': ['A','B','AB','O'],
-  'fatorRh': ['Positivo (+)', 'Negativo (-)'],
+  'fatorRh': ['Positivo (+)','Negativo (-)'],
   'genotipo': ['AA','AS','SS','AC','SC'],
-  'tipoIncapacidade': ['Fisica','Mental','Sensorial','Multipla'],
+  'tipoIncapacidade': ['Física','Mental','Sensorial','Múltipla'],
   'grau': ['Leve','Moderado','Grave'],
   'tipoAptidao': ['Apto','Inapto','Apto com restrições'],
   'modalidade': ['Desportiva','Laboral','Escolar'],
@@ -462,14 +451,14 @@ const opcoesSelect = {
   'testeCovid': ['Sim','Não']
 };
 
-function formatNameCampo(chave) {
-  return chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
-}
+function formatarNomeCampo(chave) { return chave.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()); }
 
+// Função para obter número de dias em um mês/ano
 function getDiasNoMes(mes, ano) {
   return new Date(ano, mes, 0).getDate();
 }
 
+// Atualiza os dias conforme mês e ano
 function atualizarDias() {
   const mes = parseInt(document.getElementById('mes').value);
   const ano = parseInt(document.getElementById('ano').value);
@@ -493,14 +482,14 @@ function atualizarDias() {
 // Token e inicialização
 const token = localStorage.getItem('token');
 if (!token) {
-  document.getElementById('loadingMessage').innerText = 'Sessão expirada';
+  document.getElementById('loadingMessage').innerText = '❌ Sessão expirada';
   setTimeout(() => window.location.href = '/', 2000);
 } else {
   document.getElementById('loadingMessage').style.display = 'none';
   document.getElementById('certForm').style.display = 'block';
 }
 
-// Events para data
+// Eventos para data
 document.getElementById('mes').addEventListener('change', atualizarDias);
 document.getElementById('ano').addEventListener('input', atualizarDias);
 // Pré-definir ano atual e mês atual
@@ -515,13 +504,10 @@ document.getElementById('tipo').addEventListener('change', function() {
   const lista = examesPorTipo[tipo] || [];
   let html = '';
   lista.forEach(campo => {
-    const label = formatNameCampo(campo);
+    const label = formatarNomeCampo(campo);
     if (opcoesSelect[campo]) {
-      html += '<div class="campo"><label>' + label + '</label><select name="' + campo + '" id="campo_' + campo + '">';
-      html += '<option value="" selected disabled>Selecione...</option>';
-      opcoesSelect[campo].forEach(opt => {
-        html += '<option value="' + opt + '">' + opt + '</option>';
-      });
+      html += '<div class="campo"><label>' + label + '</label><select name="' + campo + '" id="campo_' + campo + '"><option value="" selected disabled>Selec...</option>';
+      opcoesSelect[campo].forEach(opt => { html += '<option value="' + opt + '">' + opt + '</option>'; });
       html += '</select></div>';
     } else {
       let tipoInput = 'text';
@@ -538,22 +524,20 @@ document.getElementById('certForm').addEventListener('submit', function(e) {
   e.preventDefault();
   let html = '<div><strong>Paciente:</strong> ' + document.getElementById('nomeCompleto').value + '</div><div style="border-top:1px solid #eee; margin-top:1rem;">';
   document.querySelectorAll('#camposEspecificosContainer input, #camposEspecificosContainer select').forEach(i => {
-    if (i.value) html += '<div><span>' + formatNameCampo(i.name) + '</span> <b>' + i.value + '</b></div>';
+    if (i.value) html += '<div><span>' + formatarNomeCampo(i.name) + '</span> <b>' + i.value + '</b></div>';
   });
   html += '</div>';
   document.getElementById('previewContent').innerHTML = html;
   document.getElementById('modalPreview').style.display = 'flex';
 });
 
-window.fecharPreview = () => {
-  document.getElementById('modalPreview').style.display = 'none';
-};
+window.fecharPreview = () => { document.getElementById('modalPreview').style.display = 'none'; };
 
 // Confirmação e envio
 document.getElementById('btnConfirmarFinal').addEventListener('click', async function() {
   fecharPreview();
   document.getElementById('btnEmitir').disabled = true;
-  document.getElementById('btnEmitir').textContent = 'Emitindo...';
+  document.getElementById('btnEmitir').textContent = '⏳ Emitindo...';
 
   // Construir data de nascimento a partir dos campos
   const dia = document.getElementById('dia').value;
@@ -562,7 +546,7 @@ document.getElementById('btnConfirmarFinal').addEventListener('click', async fun
   if (!dia || !mes || !ano) {
     alert('Preencha a data de nascimento completa.');
     document.getElementById('btnEmitir').disabled = false;
-    document.getElementById('btnEmitir').textContent = 'Emitir certificado';
+    document.getElementById('btnEmitir').textContent = '📥 Emitir certificado';
     return;
   }
   const dataNascimento = ano + '-' + mes.padStart(2,'0') + '-' + dia.padStart(2,'0');
@@ -603,29 +587,21 @@ document.getElementById('btnConfirmarFinal').addEventListener('click', async fun
     const data = await r.json();
     if (!r.ok) throw new Error(data.erro || 'Erro');
     document.getElementById('certForm').style.display = 'none';
-    document.getElementById('resultadoArea').innerHTML = `
-      <div style="background:white; padding:2rem; text-align:center; border-radius:12px;">
-        <div style="color:#006633; font-size:2rem;">Sucesso</div>
-        <div style="background:#ffcc00; padding:0.5rem; border-radius:60px; margin:1rem 0;">${data.numero}</div>
-        <p><strong>Idade:</strong> ${data.idade || '?'} anos</p>
-        ${data.imc ? `<p><strong>IMC:</strong> ${data.imc} (${data.classificacaoIMC})</p>` : ''}
-        <button class="btn-emitir" onclick="location.reload()">Novo Certificado</button>
-      </div>
-    `;
+    document.getElementById('resultadoArea').innerHTML = '<div style="background:white; padding:2rem; text-align:center; border-radius:12px;"><div style="color:#006633; font-size:2rem;">✅ Sucesso</div><div style="background:#ffcc00; padding:0.5rem; border-radius:60px; margin:1rem 0;">' + data.numero + '</div><p><strong>IMC:</strong> ' + (data.imc || '—') + ' | ' + (data.classificacaoIMC || '—') + '</p><p><strong>Idade:</strong> ' + (data.idade || '?') + ' anos</p><button class="btn-emitir" onclick="location.reload()">➕ Novo</button></div>';
     document.getElementById('resultadoArea').style.display = 'block';
   } catch (error) {
     alert('Erro: ' + error.message);
   } finally {
     document.getElementById('btnEmitir').disabled = false;
-    document.getElementById('btnEmitir').textContent = 'Emitir certificado';
+    document.getElementById('btnEmitir').textContent = '📥 Emitir certificado';
   }
 });
 </script>
-</body>
-</html>`);
+</body></html>
+  `);
 });
 
-// ====== API Routes ======
+// ========== API Routes ==========
 app.post('/api/laboratorio/login', async (req, res) => {
   try {
     const { apiKey } = req.body;
@@ -633,13 +609,10 @@ app.post('/api/laboratorio/login', async (req, res) => {
     const prefix = apiKey.split('-')[0];
     if (prefix !== 'LAB') return res.status(403).json({ erro: 'Chave inválida para laboratório' });
 
-    const labs = await Establishment.find({ establishmentType: 'laboratorio' }).select('+keyHash');
+    const labs = await Establishment.find({ establishmentType: 'laboratorio', keyPrefix: 'LAB-' }).select('+keyHash');
     let lab = null;
     for (const est of labs) {
-      if (await bcrypt.compare(apiKey, est.keyHash)) {
-        lab = est;
-        break;
-      }
+      if (await bcrypt.compare(apiKey, est.keyHash)) { lab = est; break; }
     }
     if (!lab) return res.status(401).json({ erro: 'Chave API inválida' });
     if (lab.status === 'Inativo') return res.status(403).json({ erro: 'Laboratório inativo' });
@@ -662,7 +635,7 @@ app.get('/api/laboratorio/stats', authJWT, async (req, res) => {
     res.json({ total, porTipo });
   } catch (error) {
     console.error('Erro stats:', error);
-    res.status(500).json({ erro: 'Erro ao obter estatísticas' });
+    res.status(500).json({ erro: 'Erro stats' });
   }
 });
 
@@ -711,7 +684,7 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
           classificacaoIMC: (dados && dados.peso && dados.altura) ? calcularIMC(dados.peso, dados.altura).classificacao : null
         });
         await certificado.save();
-        break;
+        break; // Sucesso
       } catch (err) {
         if (err.code === 11000) {
           tentativas++;
@@ -724,6 +697,9 @@ app.post('/api/laboratorio/certificados', authJWT, async (req, res) => {
         }
       }
     }
+
+    req.lab.totalEmissoes = (req.lab.totalEmissoes || 0) + 1;
+    await req.lab.save();
 
     res.json({ success: true, numero, idade: certificado.idadeCalculada, imc: certificado.imcCalculado, classificacaoIMC: certificado.classificacaoIMC });
   } catch (error) {
@@ -763,6 +739,7 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     y += 15;
     doc.fontSize(14).text(lab.name, 70, y);
     y += 20;
+    // Corrigido: adicionar "Província:" explicitamente
     doc.fontSize(10).fillColor('#666').text(`NIF: ${lab.nif} | Província: ${lab.province}`, 70, y);
     y += 15;
     doc.text(`Endereço: ${lab.address} | Tel: ${lab.phone1}`, 70, y);
@@ -772,7 +749,7 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
     doc.fontSize(10).fillColor('#666').text(`Emissão: ${new Date(certificate.createdAt).toLocaleDateString('pt-PT')}`, 50, y + 15);
     y += 40;
 
-    // TÍTULO DO TIPO DE CERTIFICADO
+    // TÍTULO DO TIPO DE CERTIFICADO (adicionado)
     const tipos = {
       1: 'GENÓTIPO',
       2: 'BOA SAÚDE',
@@ -810,7 +787,7 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
       campos.forEach(campo => {
         const valor = certificate.testResults ? certificate.testResults[campo] : null;
         const valorExibido = (valor && valor.toString().trim() !== '') ? valor : '(não solicitado)';
-        const nomeFormatado = formatNameCampo(campo);
+        const nomeFormatado = formatarNomeCampo(campo);
         doc.text(`${nomeFormatado}: ${valorExibido}`, 70, y);
         y += 15;
         if (y > 700) { doc.addPage(); y = 50; }
@@ -866,4 +843,3 @@ app.get('/api/laboratorio/certificados/:id/pdf', authJWT, async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 Laboratório rodando na porta ${PORT}`));
-```
